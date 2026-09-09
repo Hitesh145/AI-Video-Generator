@@ -3,17 +3,28 @@ from services.llm_service import LLMService
 
 
 def main() -> None:
+    user_request = "Explain binary search to a beginner."
+
+    prompt = f"""
+    Analyze the following educational request.
+
+    User request:
+    {user_request}
+
+    Extract:
+    - the topic
+    - the intended audience
+    - the learning goal
+    - an approximate lesson duration in minutes
+    - the teaching depth
+
+    Return only the structured result matching the provided schema.
+    """
+
     llm = LLMService()
 
     lesson = llm.generate_structured(
-        """
-        Analyze this user request for an educational video:
-
-        "Explain neural networks to a beginner."
-
-        Determine the topic, intended audience, learning goal,
-        approximate duration in minutes, and teaching depth.
-        """,
+        prompt,
         LessonRequest,
     )
 
