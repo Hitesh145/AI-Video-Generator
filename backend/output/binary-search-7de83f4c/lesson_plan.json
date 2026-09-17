@@ -1,0 +1,17 @@
+{
+  "title": "Introduction to Binary Search: Finding Things Fast",
+  "learning_objectives": [
+    "Understand the basic concept of searching in sorted data",
+    "Compare the efficiency of linear search versus binary search",
+    "Explain the step-by-step logic of how binary search divides and conquers"
+  ],
+  "sections": [
+    "The Real-World Analogy: Searching for a Word in a Dictionary",
+    "The Baseline: How Linear Search Works",
+    "The Efficiency Problem with Linear Search",
+    "The Core Principle: Eliminating Half the Possibilities",
+    "Step-by-Step Breakdown of the Binary Search Algorithm",
+    "Comparing Speeds: Why Binary Search is Exponentially Faster",
+    "Summary and Key Takeaways"
+  ]
+}

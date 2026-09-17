@@ -1,0 +1,7 @@
+{
+  "topic": "Neural Networks",
+  "audience": "General learners with some basic technical background",
+  "goal": "Understand the core architecture, working principles, and training process of artificial neural networks.",
+  "duration_minutes": 20,
+  "teaching_depth": "intermediate"
+}

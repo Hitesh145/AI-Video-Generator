@@ -1,0 +1,427 @@
+{
+  "scenes": [
+    {
+      "id": "scene_intro",
+      "section_title": "Introduction",
+      "narration_reference": "introduction",
+      "purpose": "Introduce artificial neural networks and their ubiquitous presence in modern technology.",
+      "visual_type": "illustration",
+      "description": "An introductory title graphic showing everyday devices connected to a central glowing neural network structure.",
+      "layout": "centered focal point with connected peripheral icons",
+      "elements": [
+        {
+          "id": "title_text",
+          "type": "label",
+          "description": "Main title indicating the lesson topic.",
+          "label": "Artificial Neural Networks",
+          "properties": {}
+        },
+        {
+          "id": "devices_icon",
+          "type": "object",
+          "description": "Group of everyday icons representing smartphones, streams, and assistants.",
+          "label": "Everyday Tech",
+          "properties": {}
+        },
+        {
+          "id": "network_graphic",
+          "type": "concept",
+          "description": "Abstract interconnected nodes representing underlying neural networks.",
+          "label": "Neural Network Core",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "title_text",
+            "devices_icon",
+            "network_graphic"
+          ],
+          "description": "Reveal the title and surrounding technology icons simultaneously.",
+          "narration_cue": "Welcome to our deep dive into artificial neural networks.",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 12.0
+    },
+    {
+      "id": "scene_sec_1",
+      "section_title": "Introduction to Neural Networks and Biological Inspiration",
+      "narration_reference": "script_section_1",
+      "purpose": "Compare a biological neuron to an artificial neuron to show the source of inspiration.",
+      "visual_type": "comparison",
+      "description": "Side-by-side comparison of a biological brain cell structure and an abstract artificial neuron node.",
+      "layout": "side-by-side comparison",
+      "elements": [
+        {
+          "id": "bio_neuron",
+          "type": "object",
+          "description": "A biological neuron showing dendrites, cell body, and axon.",
+          "label": "Biological Neuron",
+          "properties": {}
+        },
+        {
+          "id": "artificial_neuron",
+          "type": "object",
+          "description": "An artificial neuron showing inputs, processing function, and output.",
+          "label": "Artificial Neuron",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "bio_neuron"
+          ],
+          "description": "Display the biological neuron on the left side.",
+          "narration_cue": "roughly eighty-six billion neurons",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "show",
+          "target": [
+            "artificial_neuron"
+          ],
+          "description": "Display the artificial neuron on the right side.",
+          "narration_cue": "created the artificial neuron",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 15.0
+    },
+    {
+      "id": "scene_sec_2",
+      "section_title": "Anatomy of a Neural Network: Nodes, Weights, and Biases",
+      "narration_reference": "script_section_2",
+      "purpose": "Illustrate layers of a neural network and highlight weights and biases on connections.",
+      "visual_type": "diagram",
+      "description": "A multi-layer feedforward network diagram showing input, hidden, and output layers with labeled connections.",
+      "layout": "left-to-right flow diagram",
+      "elements": [
+        {
+          "id": "input_layer",
+          "type": "data_structure",
+          "description": "Input layer nodes.",
+          "label": "Input Layer",
+          "properties": {}
+        },
+        {
+          "id": "hidden_layer",
+          "type": "data_structure",
+          "description": "Hidden layer nodes processing information.",
+          "label": "Hidden Layer",
+          "properties": {}
+        },
+        {
+          "id": "output_layer",
+          "type": "data_structure",
+          "description": "Output layer node delivering the result.",
+          "label": "Output Layer",
+          "properties": {}
+        },
+        {
+          "id": "connection_weight",
+          "type": "concept",
+          "description": "Connecting line representing weights and thresholds.",
+          "label": "Weights & Biases",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "input_layer",
+            "hidden_layer",
+            "output_layer"
+          ],
+          "description": "Reveal the three main network layers.",
+          "narration_cue": "input layer to receive data, one or more hidden layers... and an output layer",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "highlight",
+          "target": [
+            "connection_weight"
+          ],
+          "description": "Highlight the connections between nodes to discuss weights and biases.",
+          "narration_cue": "every connection between nodes is governed by two crucial components: weights and biases",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 18.0
+    },
+    {
+      "id": "scene_sec_3",
+      "section_title": "How Information Flows: Forward Propagation",
+      "narration_reference": "script_section_3",
+      "purpose": "Show data passing sequentially through the network layers during forward propagation.",
+      "visual_type": "animation",
+      "description": "An animated sequence showing pixel inputs lighting up nodes progressively through hidden layers to a final prediction.",
+      "layout": "left-to-right sequential activation flow",
+      "elements": [
+        {
+          "id": "input_pixels",
+          "type": "input",
+          "description": "Image pixel data entering the network.",
+          "label": "Input Data",
+          "properties": {}
+        },
+        {
+          "id": "network_nodes",
+          "type": "object",
+          "description": "Network nodes receiving and computing values.",
+          "label": "Nodes",
+          "properties": {}
+        },
+        {
+          "id": "final_prediction",
+          "type": "output",
+          "description": "Final output classification representing the number seven.",
+          "label": "Prediction: 7",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "input_pixels"
+          ],
+          "description": "Introduce the input data on the left.",
+          "narration_cue": "feed an image of a handwritten number into the input layer",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "transform",
+          "target": [
+            "network_nodes"
+          ],
+          "description": "Animate signals propagating forward layer by layer.",
+          "narration_cue": "process takes place: it multiplies every incoming input value",
+          "parameters": {}
+        },
+        {
+          "order": 3,
+          "type": "reveal",
+          "target": [
+            "final_prediction"
+          ],
+          "description": "Display the resulting prediction at the output layer.",
+          "narration_cue": "output layer, where the network produces its final prediction",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 20.0
+    },
+    {
+      "id": "scene_sec_4",
+      "section_title": "Introducing Non-linearity: The Role of Activation Functions",
+      "narration_reference": "script_section_4",
+      "purpose": "Explain how activation functions introduce non-linear curves to model complex decision boundaries.",
+      "visual_type": "graph",
+      "description": "Graphs showing linear boundaries versus curved non-linear decision boundaries created by activation functions like Sigmoid and ReLU.",
+      "layout": "side-by-side comparative graphs",
+      "elements": [
+        {
+          "id": "linear_graph",
+          "type": "data_structure",
+          "description": "A straight-line threshold graph.",
+          "label": "Linear System",
+          "properties": {}
+        },
+        {
+          "id": "activation_graph",
+          "type": "data_structure",
+          "description": "A curved Sigmoid or ReLU function graph.",
+          "label": "Activation Function",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "linear_graph"
+          ],
+          "description": "Display the limited straight-line model.",
+          "narration_cue": "if a neural network only performed basic multiplication... it would just be a series of linear equations",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "transform",
+          "target": [
+            "activation_graph"
+          ],
+          "description": "Transition to or reveal the non-linear activation function graph.",
+          "narration_cue": "To solve this, we introduce activation functions.",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 16.0
+    },
+    {
+      "id": "scene_sec_5",
+      "section_title": "Measuring Error: Loss Functions and Cost",
+      "narration_reference": "script_section_5",
+      "purpose": "Demonstrate how a loss function compares network predictions with actual truths to calculate error.",
+      "visual_type": "diagram",
+      "description": "A conceptual pipeline showing a network prediction compared against the true target via a loss function block.",
+      "layout": "inputs converging into a central evaluation function",
+      "elements": [
+        {
+          "id": "prediction_output",
+          "type": "input",
+          "description": "The prediction made by the model.",
+          "label": "Prediction",
+          "properties": {}
+        },
+        {
+          "id": "true_target",
+          "type": "input",
+          "description": "The correct actual answer.",
+          "label": "True Answer",
+          "properties": {}
+        },
+        {
+          "id": "loss_function",
+          "type": "concept",
+          "description": "Mathematical formula computing the error penalty.",
+          "label": "Loss Function / Cost",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "prediction_output",
+            "true_target"
+          ],
+          "description": "Display the prediction and the true answer side by side.",
+          "narration_cue": "compares the network's prediction against the true, correct answer.",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "connect",
+          "target": [
+            "loss_function"
+          ],
+          "description": "Feed both values into the loss function to compute cost.",
+          "narration_cue": "calculates a high penalty, representing a large error.",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 15.0
+    },
+    {
+      "id": "scene_sec_6",
+      "section_title": "Improving the Model: Backpropagation and Gradient Descent",
+      "narration_reference": "script_section_6",
+      "purpose": "Illustrate backward flow of error and weight adjustment via gradient descent.",
+      "visual_type": "animation",
+      "description": "An animated network diagram showing backward red arrows flowing from output to input, followed by weight adjustments.",
+      "layout": "right-to-left reverse flow diagram",
+      "elements": [
+        {
+          "id": "error_signal",
+          "type": "object",
+          "description": "Error feedback moving backward through layers.",
+          "label": "Backpropagation",
+          "properties": {}
+        },
+        {
+          "id": "optimizer_node",
+          "type": "concept",
+          "description": "Gradient descent adjusting weights and biases.",
+          "label": "Gradient Descent",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "error_signal"
+          ],
+          "description": "Animate arrows flowing backward from output to input layers.",
+          "narration_cue": "backpropagation travels backward through the network, from the output to the input",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "highlight",
+          "target": [
+            "optimizer_node"
+          ],
+          "description": "Highlight weight updates across connections.",
+          "narration_cue": "Gradient descent tweaks the weights and biases by tiny amounts",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 18.0
+    },
+    {
+      "id": "scene_conclusion",
+      "section_title": "Conclusion and Summary of the Learning Journey",
+      "narration_reference": "conclusion",
+      "purpose": "Summarize the core concepts learned throughout the lesson in a unified overview graphic.",
+      "visual_type": "diagram",
+      "description": "A summary mind-map or connected modular diagram linking biology, nodes/weights, forward flow, activation, and backpropagation.",
+      "layout": "hub-and-spoke summary layout",
+      "elements": [
+        {
+          "id": "summary_network",
+          "type": "concept",
+          "description": "Central complete neural network icon.",
+          "label": "Neural Networks",
+          "properties": {}
+        },
+        {
+          "id": "key_pillars",
+          "type": "data_structure",
+          "description": "Modular blocks representing structure, forward propagation, loss, and backpropagation.",
+          "label": "Core Principles",
+          "properties": {}
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "summary_network",
+            "key_pillars"
+          ],
+          "description": "Display the unified summary diagram.",
+          "narration_cue": "We have journeyed from the biological inspiration... to the complex mechanics",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 14.0
+    }
+  ]
+}

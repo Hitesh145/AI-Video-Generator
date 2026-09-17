@@ -1,0 +1,481 @@
+{
+  "scenes": [
+    {
+      "id": "scene_intro",
+      "section_title": "Introduction",
+      "narration_reference": "introduction",
+      "purpose": "Introduce the concept of Neural Network Search transitioning from manual human design to automated algorithmic design.",
+      "visual_type": "comparison",
+      "description": "A side-by-side comparison showing human engineers blueprinting networks on the left versus an automated algorithm designing networks on the right.",
+      "layout": "side-by-side comparison",
+      "elements": [
+        {
+          "id": "human_design",
+          "type": "concept",
+          "description": "Manual human engineering and blueprinting of neural networks.",
+          "label": "Manual Design (Human)",
+          "properties": {}
+        },
+        {
+          "id": "automated_design",
+          "type": "concept",
+          "description": "Algorithmic automated design of neural networks.",
+          "label": "Neural Network Search (AI)",
+          "properties": {}
+        },
+        {
+          "id": "bottleneck_arrow",
+          "type": "arrow",
+          "description": "Shows transition and evolution from manual bottleneck to automated search.",
+          "label": "Evolution",
+          "properties": {}
+        }
+      ],
+      "relationships": [
+        {
+          "type": "transforms_into",
+          "source": "human_design",
+          "target": "automated_design",
+          "description": "Automated search replaces manual design to solve complexity bottlenecks.",
+          "properties": {}
+        }
+      ],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "human_design"
+          ],
+          "description": "Display the manual human engineering approach.",
+          "narration_cue": "human engineers build every neural network by hand",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "show",
+          "target": [
+            "automated_design",
+            "bottleneck_arrow"
+          ],
+          "description": "Reveal automated search taking over the heavy lifting.",
+          "narration_cue": "Neural Network Search comes in",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 30.0
+    },
+    {
+      "id": "scene_section_1",
+      "section_title": "Introduction to the Concept: What is Automated Network Design?",
+      "narration_reference": "script_section_1",
+      "purpose": "Explain layers of artificial neurons and how automated trial-and-error replaces manual tuning.",
+      "visual_type": "diagram",
+      "description": "A neural network diagram with multiple interconnected layers, illustrating the trial-and-error loop of automated design.",
+      "layout": "flow diagram",
+      "elements": [
+        {
+          "id": "nn_layer_input",
+          "type": "data_structure",
+          "description": "Input layers of artificial neurons.",
+          "label": "Input Layers",
+          "properties": {}
+        },
+        {
+          "id": "nn_layer_hidden",
+          "type": "data_structure",
+          "description": "Hidden processing layers being optimized.",
+          "label": "Hidden Layers",
+          "properties": {}
+        },
+        {
+          "id": "trial_loop",
+          "type": "process",
+          "description": "Systematic trial-and-error feedback loop.",
+          "label": "Automated Trial & Error",
+          "properties": {}
+        }
+      ],
+      "relationships": [
+        {
+          "type": "flows_to",
+          "source": "nn_layer_input",
+          "target": "nn_layer_hidden",
+          "description": "Data flows forward through network layers.",
+          "properties": {}
+        },
+        {
+          "type": "causes",
+          "source": "trial_loop",
+          "target": "nn_layer_hidden",
+          "description": "Trial loop optimizes layer sizes and connection types.",
+          "properties": {}
+        }
+      ],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "nn_layer_input",
+            "nn_layer_hidden"
+          ],
+          "description": "Show the standard multi-layered neural network structure.",
+          "narration_cue": "A neural network is made of layers of artificial neurons",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "animate",
+          "target": [
+            "trial_loop"
+          ],
+          "description": "Animate the computer program systematically testing and refining architectures.",
+          "narration_cue": "computer program systematically tests, evaluates, and refines",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 45.0
+    },
+    {
+      "id": "scene_section_2",
+      "section_title": "The Search Space: Defining the Boundaries of Possibilities",
+      "narration_reference": "script_section_2",
+      "purpose": "Illustrate the search space as a menu of architectural choices and building blocks.",
+      "visual_type": "diagram",
+      "description": "A bounded menu container showing choices of layer types, connections, and hyperparameters.",
+      "layout": "bounded container",
+      "elements": [
+        {
+          "id": "search_boundary",
+          "type": "concept",
+          "description": "The boundaries defined by creators for possible network designs.",
+          "label": "Search Space Boundaries",
+          "properties": {}
+        },
+        {
+          "id": "building_blocks",
+          "type": "object",
+          "description": "Architectural options like convolutional layers, recurrent layers, and filter sizes.",
+          "label": "Building Blocks & Layers",
+          "properties": {}
+        }
+      ],
+      "relationships": [
+        {
+          "type": "contains",
+          "source": "search_boundary",
+          "target": "building_blocks",
+          "description": "The search space contains all allowable architectural building blocks.",
+          "properties": {}
+        }
+      ],
+      "actions": [
+        {
+          "order": 1,
+          "type": "reveal",
+          "target": [
+            "search_boundary",
+            "building_blocks"
+          ],
+          "description": "Display the menu of available architectural choices within the search space.",
+          "narration_cue": "Think of the search space as a massive menu of building blocks",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 40.0
+    },
+    {
+      "id": "scene_section_3",
+      "section_title": "Search Strategies: How the System Explores the Options",
+      "narration_reference": "script_section_3",
+      "purpose": "Compare different search strategies including random search, reinforcement learning, and evolutionary algorithms.",
+      "visual_type": "comparison",
+      "description": "Three distinct strategy paths shown side-by-side: Random Search, Reinforcement Learning agent, and Evolutionary mutation cycles.",
+      "layout": "three-column comparison",
+      "elements": [
+        {
+          "id": "strategy_random",
+          "type": "concept",
+          "description": "Random sampling of architectures.",
+          "label": "Random Search",
+          "properties": {}
+        },
+        {
+          "id": "strategy_rl",
+          "type": "concept",
+          "description": "Agent learning from performance feedback to propose better networks.",
+          "label": "Reinforcement Learning",
+          "properties": {}
+        },
+        {
+          "id": "strategy_evo",
+          "type": "concept",
+          "description": "Population mutation and generation breeding.",
+          "label": "Evolutionary Algorithms",
+          "properties": {}
+        }
+      ],
+      "relationships": [
+        {
+          "type": "compares_with",
+          "source": "strategy_random",
+          "target": "strategy_rl",
+          "description": "Random search vs intelligent agent feedback.",
+          "properties": {}
+        },
+        {
+          "type": "compares_with",
+          "source": "strategy_rl",
+          "target": "strategy_evo",
+          "description": "RL agent vs evolutionary generation breeding.",
+          "properties": {}
+        }
+      ],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "strategy_random",
+            "strategy_rl",
+            "strategy_evo"
+          ],
+          "description": "Present the three primary search strategy approaches.",
+          "narration_cue": "One is random search... reinforcement learning... evolutionary algorithms",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "highlight",
+          "target": [
+            "strategy_rl"
+          ],
+          "description": "Highlight agent-based feedback loop.",
+          "narration_cue": "agent that learns from experience",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 50.0
+    },
+    {
+      "id": "scene_section_4",
+      "section_title": "Performance Estimation: Evaluating How Well a Network Works",
+      "narration_reference": "script_section_4",
+      "purpose": "Demonstrate the evaluation challenge and shortcuts like proxy tasks and weight sharing to save time.",
+      "visual_type": "process",
+      "description": "A workflow contrasting full training cost against fast estimation shortcuts like proxy tasks and weight sharing.",
+      "layout": "left-to-right flow",
+      "elements": [
+        {
+          "id": "full_training",
+          "type": "process",
+          "description": "Training networks from scratch taking hours or days.",
+          "label": "Full Training (Slow)",
+          "properties": {}
+        },
+        {
+          "id": "proxy_tasks",
+          "type": "process",
+          "description": "Training on subsets or fewer epochs for quick estimation.",
+          "label": "Proxy Tasks & Weight Sharing",
+          "properties": {}
+        }
+      ],
+      "relationships": [
+        {
+          "type": "transforms_into",
+          "source": "full_training",
+          "target": "proxy_tasks",
+          "description": "Shortcuts replace costly full training during preliminary search phases.",
+          "properties": {}
+        }
+      ],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "full_training"
+          ],
+          "description": "Display the time-consuming full training approach.",
+          "narration_cue": "train it from scratch on a dataset and measure its accuracy",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "reveal",
+          "target": [
+            "proxy_tasks"
+          ],
+          "description": "Introduce proxy tasks and weight sharing as efficient shortcuts.",
+          "narration_cue": "researchers have developed clever shortcuts for performance estimation",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 45.0
+    },
+    {
+      "id": "scene_section_5",
+      "section_title": "Summary and Takeaways",
+      "narration_reference": "script_section_5",
+      "purpose": "Summarize the three core pillars of Neural Network Search.",
+      "visual_type": "diagram",
+      "description": "A tripartite summary diagram connecting Search Space, Search Strategy, and Performance Estimation into an autonomous AI building loop.",
+      "layout": "triangle or three-part flow",
+      "elements": [
+        {
+          "id": "pillar_space",
+          "type": "concept",
+          "description": "Defined boundaries of possible architectures.",
+          "label": "1. Search Space",
+          "properties": {}
+        },
+        {
+          "id": "pillar_strategy",
+          "type": "concept",
+          "description": "Exploration methods like RL and evolutionary algorithms.",
+          "label": "2. Search Strategy",
+          "properties": {}
+        },
+        {
+          "id": "pillar_estimation",
+          "type": "concept",
+          "description": "Efficient evaluation using proxies and weight sharing.",
+          "label": "3. Performance Estimation",
+          "properties": {}
+        },
+        {
+          "id": "autonomous_ai",
+          "type": "object",
+          "description": "Optimized AI systems built autonomously.",
+          "label": "Optimized AI",
+          "properties": {}
+        }
+      ],
+      "relationships": [
+        {
+          "type": "flows_to",
+          "source": "pillar_space",
+          "target": "pillar_strategy",
+          "description": "Search strategy explores the search space.",
+          "properties": {}
+        },
+        {
+          "type": "flows_to",
+          "source": "pillar_strategy",
+          "target": "pillar_estimation",
+          "description": "Proposed architectures are evaluated by performance estimation.",
+          "properties": {}
+        },
+        {
+          "type": "causes",
+          "source": "pillar_estimation",
+          "target": "autonomous_ai",
+          "description": "Evaluation loops produce optimized AI models.",
+          "properties": {}
+        }
+      ],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "pillar_space",
+            "pillar_strategy",
+            "pillar_estimation"
+          ],
+          "description": "Display the three core pillars together.",
+          "narration_cue": "combining these three elements",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "connect",
+          "target": [
+            "pillar_space",
+            "pillar_strategy",
+            "pillar_estimation",
+            "autonomous_ai"
+          ],
+          "description": "Connect the pillars leading to autonomous AI building.",
+          "narration_cue": "empowers computers to build optimized AI systems autonomously",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 40.0
+    },
+    {
+      "id": "scene_conclusion",
+      "section_title": "Conclusion",
+      "narration_reference": "conclusion",
+      "purpose": "Provide a final concluding overview bridging human ingenuity and future AI models.",
+      "visual_type": "mixed",
+      "description": "An inspiring concluding visual uniting human ingenuity and automated computational efficiency.",
+      "layout": "centered convergence",
+      "elements": [
+        {
+          "id": "human_ingenuity",
+          "type": "concept",
+          "description": "Human ingenuity and foundational design.",
+          "label": "Human Ingenuity",
+          "properties": {}
+        },
+        {
+          "id": "computational_efficiency",
+          "type": "concept",
+          "description": "Algorithmic speed and automated search.",
+          "label": "Computational Efficiency",
+          "properties": {}
+        },
+        {
+          "id": "future_ai",
+          "type": "object",
+          "description": "Smarter, faster, and more creative AI models for the future.",
+          "label": "Future AI Models",
+          "properties": {}
+        }
+      ],
+      "relationships": [
+        {
+          "type": "flows_to",
+          "source": "human_ingenuity",
+          "target": "future_ai",
+          "description": "Ingenuity combined with efficiency builds the future of AI.",
+          "properties": {}
+        },
+        {
+          "type": "flows_to",
+          "source": "computational_efficiency",
+          "target": "future_ai",
+          "description": "Efficient search accelerates future AI model creation.",
+          "properties": {}
+        }
+      ],
+      "actions": [
+        {
+          "order": 1,
+          "type": "show",
+          "target": [
+            "human_ingenuity",
+            "computational_efficiency"
+          ],
+          "description": "Show the bridge between human ingenuity and computational efficiency.",
+          "narration_cue": "bridges the gap between human ingenuity and computational efficiency",
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "highlight",
+          "target": [
+            "future_ai"
+          ],
+          "description": "Reveal future AI models unlocked by the core pillars.",
+          "narration_cue": "unlock smarter, faster, and more creative AI models",
+          "parameters": {}
+        }
+      ],
+      "duration_seconds": 25.0
+    }
+  ]
+}

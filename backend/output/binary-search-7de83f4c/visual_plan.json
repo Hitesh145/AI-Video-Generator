@@ -1,0 +1,76 @@
+{
+  "scenes": [
+    {
+      "id": "scene_1",
+      "section_title": "Binary Search",
+      "narration_reference": "script_section_1",
+      "purpose": "Show how binary search narrows the search space step by step.",
+      "visual_type": "animation",
+      "description": "Show a sorted array, highlight the middle value, and discard the half that cannot contain the target.",
+      "layout": "Horizontal array with a highlighted middle element and a shrinking search window.",
+      "elements": [
+        {
+          "id": "array",
+          "type": "data_structure",
+          "description": "The sorted list of values currently being searched.",
+          "label": "Array",
+          "properties": {
+            "values": [
+              2,
+              5,
+              8,
+              12,
+              16,
+              23,
+              38
+            ]
+          }
+        },
+        {
+          "id": "target",
+          "type": "value",
+          "description": "The number we want to find.",
+          "label": "Target",
+          "properties": {
+            "value": 23
+          }
+        },
+        {
+          "id": "middle",
+          "type": "highlight",
+          "description": "The current midpoint under comparison.",
+          "label": "Middle",
+          "properties": {
+            "value": 12
+          }
+        }
+      ],
+      "relationships": [],
+      "actions": [
+        {
+          "order": 1,
+          "type": "highlight",
+          "target": [
+            "middle"
+          ],
+          "description": "Highlight the middle element being compared to the target.",
+          "narration_cue": null,
+          "parameters": {}
+        },
+        {
+          "order": 2,
+          "type": "hide",
+          "target": [
+            "array"
+          ],
+          "description": "Discard the half of the array that cannot contain the target.",
+          "narration_cue": null,
+          "parameters": {
+            "side": "left"
+          }
+        }
+      ],
+      "duration_seconds": 5.0
+    }
+  ]
+}

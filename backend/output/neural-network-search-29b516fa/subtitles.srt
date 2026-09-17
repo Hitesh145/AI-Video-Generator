@@ -1,0 +1,427 @@
+1
+00:00:00,000 --> 00:00:02,731
+Welcome to Introduction to Neural Network Search.
+
+2
+00:00:02,731 --> 00:00:07,022
+Over the next ten minutes, we will explore how computers can
+
+3
+00:00:07,022 --> 00:00:10,533
+automatically design the very neural networks that power modern
+
+4
+00:00:10,533 --> 00:00:11,313
+artificial intelligence.
+
+5
+00:00:11,313 --> 00:00:16,775
+If you are new to the field of AI, you might imagine that human
+
+6
+00:00:16,775 --> 00:00:20,676
+engineers build every neural network by hand, much like architects
+
+7
+00:00:20,676 --> 00:00:21,846
+blueprinting a house.
+
+8
+00:00:21,846 --> 00:00:25,357
+But as artificial intelligence grows more complex, designing these
+
+9
+00:00:25,357 --> 00:00:27,698
+networks manually becomes a massive bottleneck.
+
+10
+00:00:27,698 --> 00:00:32,379
+That is where Neural Network Search comes in, transforming how we build
+
+11
+00:00:32,379 --> 00:00:36,670
+AI by letting algorithms do the heavy lifting of architectural design.
+
+12
+00:00:36,670 --> 00:00:41,581
+To understand Neural Network Search, often abbreviated as NLS or NAS, we
+
+13
+00:00:41,581 --> 00:00:45,674
+first need to look at how neural networks are structured.
+
+14
+00:00:45,674 --> 00:00:50,585
+A neural network is made of layers of artificial neurons that process
+
+15
+00:00:50,585 --> 00:00:53,041
+data, recognize patterns, and make decisions.
+
+16
+00:00:53,041 --> 00:00:56,724
+Traditionally, human data scientists spend weeks or months experimenting
+
+17
+00:00:56,724 --> 00:01:01,226
+with different layer sizes, connection types, and settings to find a
+
+18
+00:01:01,226 --> 00:01:05,728
+network that performs well on a specific task, such as recognizing
+
+19
+00:01:05,728 --> 00:01:07,365
+images or translating languages.
+
+20
+00:01:07,365 --> 00:01:11,867
+Automated network design is the process of using algorithms to automate
+
+21
+00:01:11,867 --> 00:01:13,095
+this trial-and-error phase.
+
+22
+00:01:13,095 --> 00:01:18,006
+Instead of a human guessing which setup works best, a computer program
+
+23
+00:01:18,006 --> 00:01:20,871
+systematically tests, evaluates, and refines different network
+
+24
+00:01:20,871 --> 00:01:21,280
+architectures.
+
+25
+00:01:21,280 --> 00:01:26,191
+This is useful because it saves countless hours of human labor, often
+
+26
+00:01:26,191 --> 00:01:30,693
+discovers designs that humans would never have thought of, and can
+
+27
+00:01:30,693 --> 00:01:35,195
+tailor a network specifically to a unique hardware device or dataset.
+
+28
+00:01:35,195 --> 00:01:38,060
+In short, it is AI designing AI.
+
+29
+00:01:38,060 --> 00:01:43,118
+When an algorithm sets out to find a great neural network, it needs to
+
+30
+00:01:43,118 --> 00:01:45,648
+know what options are available to it.
+
+31
+00:01:45,648 --> 00:01:49,622
+This brings us to our second core component: the search space.
+
+32
+00:01:49,622 --> 00:01:54,319
+Think of the search space as a massive menu of building blocks and
+
+33
+00:01:54,319 --> 00:01:55,042
+architectural choices.
+
+34
+00:01:55,042 --> 00:01:59,016
+Just as an architect is restricted by building codes and available
+
+35
+00:01:59,016 --> 00:02:02,990
+materials, a neural network search algorithm is limited by the search
+
+36
+00:02:02,990 --> 00:02:04,797
+space defined by its creators.
+
+37
+00:02:04,797 --> 00:02:09,494
+This space might include choices about the type of layers to use, such
+
+38
+00:02:09,494 --> 00:02:13,468
+as convolutional layers for images or recurrent layers for text, the
+
+39
+00:02:13,468 --> 00:02:18,165
+number of layers in total, how those layers connect to one another, and
+
+40
+00:02:18,165 --> 00:02:20,695
+settings like filter sizes or activation functions.
+
+41
+00:02:20,695 --> 00:02:25,392
+If the search space is too small, the algorithm might miss out on
+
+42
+00:02:25,392 --> 00:02:26,475
+brilliant, innovative designs.
+
+43
+00:02:26,475 --> 00:02:31,534
+If it is too large, the search process can take an impossibly long time.
+
+44
+00:02:31,534 --> 00:02:35,508
+Defining a smart, well-structured search space is therefore one of the
+
+45
+00:02:35,508 --> 00:02:38,760
+most important steps in setting up a successful search.
+
+46
+00:02:38,760 --> 00:02:44,238
+Once we have defined our search space, we need a strategy to explore it.
+
+47
+00:02:44,238 --> 00:02:48,542
+After all, if a search space contains millions of possible network
+
+48
+00:02:48,542 --> 00:02:52,846
+combinations, we cannot possibly test every single one-it would take too
+
+49
+00:02:52,846 --> 00:02:54,802
+much computer power and time.
+
+50
+00:02:54,802 --> 00:02:59,497
+The search strategy is the method the algorithm uses to decide which
+
+51
+00:02:59,497 --> 00:03:01,454
+network architecture to try next.
+
+52
+00:03:01,454 --> 00:03:05,367
+There are a few common approaches used in the field.
+
+53
+00:03:05,367 --> 00:03:09,671
+One is random search, where the system simply picks random architectures
+
+54
+00:03:09,671 --> 00:03:12,018
+from the space and tests them.
+
+55
+00:03:12,018 --> 00:03:14,757
+While simple, it is not very efficient.
+
+56
+00:03:14,757 --> 00:03:18,279
+Another popular approach is reinforcement learning, where the search
+
+57
+00:03:18,279 --> 00:03:21,800
+algorithm acts as an agent that learns from experience.
+
+58
+00:03:21,800 --> 00:03:26,887
+It proposes a network, sees how well it performs, and uses that feedback
+
+59
+00:03:26,887 --> 00:03:29,625
+to propose better networks in the future.
+
+60
+00:03:29,625 --> 00:03:33,147
+A third approach uses evolutionary algorithms, inspired by biological
+
+61
+00:03:33,147 --> 00:03:33,538
+evolution.
+
+62
+00:03:33,538 --> 00:03:38,233
+The system starts with a population of random networks, keeps the best
+
+63
+00:03:38,233 --> 00:03:42,146
+performers, modifies or mutates them, and breeds new generations of
+
+64
+00:03:42,146 --> 00:03:43,320
+networks over time.
+
+65
+00:03:43,320 --> 00:03:48,228
+Of course, to know which networks to keep and which to discard, the
+
+66
+00:03:48,228 --> 00:03:52,003
+system must evaluate how well each proposed architecture actually works.
+
+67
+00:03:52,003 --> 00:03:53,891
+This is called performance estimation.
+
+68
+00:03:53,891 --> 00:03:58,799
+The most straightforward way to evaluate a network is to train it from
+
+69
+00:03:58,799 --> 00:04:01,819
+scratch on a dataset and measure its accuracy.
+
+70
+00:04:01,819 --> 00:04:06,349
+However, training a complex neural network can take hours or even days.
+
+71
+00:04:06,349 --> 00:04:11,257
+If you have to do this for thousands of candidate networks during a
+
+72
+00:04:11,257 --> 00:04:13,900
+search, the process quickly becomes prohibitively expensive.
+
+73
+00:04:13,900 --> 00:04:17,675
+To solve this problem, researchers have developed clever shortcuts for
+
+74
+00:04:17,675 --> 00:04:18,430
+performance estimation.
+
+75
+00:04:18,430 --> 00:04:22,961
+Some methods use proxy tasks, meaning they train the network on a
+
+76
+00:04:22,961 --> 00:04:28,624
+smaller subset of the data or for only a few epochs to get a quick
+
+77
+00:04:28,624 --> 00:04:30,134
+estimate of its potential.
+
+78
+00:04:30,134 --> 00:04:33,531
+Other methods use weight sharing, where different network architectures
+
+79
+00:04:33,531 --> 00:04:38,439
+share learned parameters so they do not have to start from scratch every
+
+80
+00:04:38,439 --> 00:04:38,817
+time.
+
+81
+00:04:38,817 --> 00:04:42,592
+These estimation techniques allow the search algorithm to quickly screen
+
+82
+00:04:42,592 --> 00:04:46,367
+thousands of designs, reserving full, rigorous training only for the
+
+83
+00:04:46,367 --> 00:04:47,500
+absolute best candidates.
+
+84
+00:04:47,500 --> 00:04:52,943
+As we wrap up our introduction to Neural Network Search, let us review
+
+85
+00:04:52,943 --> 00:04:54,199
+the main takeaways.
+
+86
+00:04:54,199 --> 00:04:57,967
+We learned that automated network design replaces manual trial-and-error
+
+87
+00:04:57,967 --> 00:05:01,316
+with algorithmic discovery, saving time and uncovering novel
+
+88
+00:05:01,316 --> 00:05:01,735
+architectures.
+
+89
+00:05:01,735 --> 00:05:06,759
+We explored the search space, which sets the boundaries of what designs
+
+90
+00:05:06,759 --> 00:05:10,527
+are possible, and looked at search strategies like reinforcement
+
+91
+00:05:10,527 --> 00:05:13,876
+learning and evolutionary algorithms that guide the exploration.
+
+92
+00:05:13,876 --> 00:05:18,063
+Finally, we examined performance estimation, which allows the system to
+
+93
+00:05:18,063 --> 00:05:21,412
+efficiently evaluate candidate networks without spending excessive time
+
+94
+00:05:21,412 --> 00:05:22,668
+on full training.
+
+95
+00:05:22,668 --> 00:05:27,273
+By combining these three elements-a defined search space, a smart search
+
+96
+00:05:27,273 --> 00:05:30,204
+strategy, and efficient performance estimation-Neural Network Search
+
+97
+00:05:30,204 --> 00:05:33,553
+empowers computers to build optimized AI systems autonomously.
+
+98
+00:05:33,553 --> 00:05:38,996
+Thank you for joining this lesson, and we hope you feel inspired to
+
+99
+00:05:38,996 --> 00:05:43,183
+learn more about how artificial intelligence continues to evolve and
+
+100
+00:05:43,183 --> 00:05:44,020
+optimize itself.
+
+101
+00:05:44,020 --> 00:05:48,520
+In conclusion, Neural Network Search bridges the gap between human
+
+102
+00:05:48,520 --> 00:05:52,570
+ingenuity and computational efficiency by automating the design of
+
+103
+00:05:52,570 --> 00:05:53,920
+artificial intelligence architectures.
+
+104
+00:05:53,920 --> 00:05:58,420
+As you continue your learning journey, remember that the core
+
+105
+00:05:58,420 --> 00:06:01,120
+pillars-search spaces, search strategies, and performance
+
+106
+00:06:01,120 --> 00:06:05,620
+estimation-work together to unlock smarter, faster, and more creative AI
+
+107
+00:06:05,620 --> 00:06:07,420
+models for the future.

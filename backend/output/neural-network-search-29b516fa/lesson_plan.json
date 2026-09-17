@@ -1,0 +1,15 @@
+{
+  "title": "Introduction to Neural Network Search",
+  "learning_objectives": [
+    "Define what neural network search is and why it is useful.",
+    "Understand the core components involved in searching through a network architecture space.",
+    "Recognize the basic workflow of finding an optimal neural network design."
+  ],
+  "sections": [
+    "Introduction to the Concept: What is Automated Network Design?",
+    "The Search Space: Defining the Boundaries of Possibilities",
+    "Search Strategies: How the System Explores the Options",
+    "Performance Estimation: Evaluating How Well a Network Works",
+    "Summary and Takeaways"
+  ]
+}

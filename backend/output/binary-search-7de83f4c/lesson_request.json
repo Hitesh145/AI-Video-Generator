@@ -1,0 +1,7 @@
+{
+  "topic": "Binary Search",
+  "audience": "Beginner",
+  "goal": "Understand how binary search works and why it is faster than linear search.",
+  "duration_minutes": 10,
+  "teaching_depth": "Introductory"
+}

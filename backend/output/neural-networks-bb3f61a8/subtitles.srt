@@ -1,0 +1,439 @@
+1
+00:00:00,000 --> 00:00:03,718
+Welcome to our deep dive into artificial neural networks.
+
+2
+00:00:03,718 --> 00:00:08,262
+If you use a smartphone, stream movies, or interact with digital
+
+3
+00:00:08,262 --> 00:00:12,393
+assistants, you are already using technology powered by neural networks.
+
+4
+00:00:12,393 --> 00:00:16,524
+But how do these systems actually work beneath the surface?
+
+5
+00:00:16,524 --> 00:00:21,068
+In this lesson, we are going to demystify artificial neural networks.
+
+6
+00:00:21,068 --> 00:00:25,199
+We will explore their biological origins, look inside their architecture
+
+7
+00:00:25,199 --> 00:00:29,743
+to understand how data moves through them, and finally, discover how
+
+8
+00:00:29,743 --> 00:00:33,874
+these computational models learn from their mistakes to make remarkably
+
+9
+00:00:33,874 --> 00:00:34,700
+accurate predictions.
+
+10
+00:00:34,700 --> 00:00:39,544
+To understand artificial neural networks, it helps to look at where the
+
+11
+00:00:39,544 --> 00:00:41,965
+idea came from: our own brains.
+
+12
+00:00:41,965 --> 00:00:46,809
+The human brain is made up of roughly eighty-six billion neurons, which
+
+13
+00:00:46,809 --> 00:00:50,845
+are specialized cells that communicate with one another using electrical
+
+14
+00:00:50,845 --> 00:00:52,056
+and chemical signals.
+
+15
+00:00:52,056 --> 00:00:55,689
+Each neuron receives signals from other neurons, processes that
+
+16
+00:00:55,689 --> 00:01:00,533
+information, and if the signal is strong enough, fires an output signal
+
+17
+00:01:00,533 --> 00:01:02,551
+to pass the message along.
+
+18
+00:01:02,551 --> 00:01:06,184
+Computer scientists in the mid-twentieth century looked at this
+
+19
+00:01:06,184 --> 00:01:10,624
+biological marvel and wondered if they could replicate it in software.
+
+20
+00:01:10,624 --> 00:01:14,660
+They created the artificial neuron, a mathematical model designed to
+
+21
+00:01:14,660 --> 00:01:15,871
+mimic biological processing.
+
+22
+00:01:15,871 --> 00:01:20,311
+While our artificial models are vastly simpler than the human brain,
+
+23
+00:01:20,311 --> 00:01:23,944
+they share the same foundational concept: interconnected units working
+
+24
+00:01:23,944 --> 00:01:27,576
+together to process complex information, recognize patterns, and make
+
+25
+00:01:27,576 --> 00:01:27,980
+decisions.
+
+26
+00:01:27,980 --> 00:01:31,406
+An artificial neural network is constructed from layers of artificial
+
+27
+00:01:31,406 --> 00:01:33,462
+neurons, which we often call nodes.
+
+28
+00:01:33,462 --> 00:01:38,601
+At a minimum, a network has an input layer to receive data, one or more
+
+29
+00:01:38,601 --> 00:01:43,055
+hidden layers to process it, and an output layer that delivers the final
+
+30
+00:01:43,055 --> 00:01:43,397
+result.
+
+31
+00:01:43,397 --> 00:01:47,166
+Within these layers, every connection between nodes is governed by two
+
+32
+00:01:47,166 --> 00:01:48,879
+crucial components: weights and biases.
+
+33
+00:01:48,879 --> 00:01:51,962
+Think of a weight as a measure of importance.
+
+34
+00:01:51,962 --> 00:01:55,731
+If a particular input is very influential in determining the outcome,
+
+35
+00:01:55,731 --> 00:02:00,185
+the connection leading from it will have a high weight; if it is
+
+36
+00:02:00,185 --> 00:02:02,925
+irrelevant, the weight will be close to zero.
+
+37
+00:02:02,925 --> 00:02:06,694
+The bias, on the other hand, acts like an adjustable threshold.
+
+38
+00:02:06,694 --> 00:02:11,833
+It determines how easy or difficult it is for a node to fire its signal,
+
+39
+00:02:11,833 --> 00:02:15,944
+allowing the network to shift its activation patterns to better fit the
+
+40
+00:02:15,944 --> 00:02:18,000
+data it is trying to learn.
+
+41
+00:02:18,000 --> 00:02:22,074
+Data moves through a neural network in a process called forward
+
+42
+00:02:22,074 --> 00:02:22,444
+propagation.
+
+43
+00:02:22,444 --> 00:02:25,777
+Imagine you want a network to recognize handwritten digits.
+
+44
+00:02:25,777 --> 00:02:30,221
+You feed an image of a handwritten number into the input layer.
+
+45
+00:02:30,221 --> 00:02:35,035
+Each pixel value is passed to the nodes in the first hidden layer.
+
+46
+00:02:35,035 --> 00:02:38,739
+Inside each node, a mathematical operation takes place: it multiplies
+
+47
+00:02:38,739 --> 00:02:42,812
+every incoming input value by its corresponding weight, adds them all
+
+48
+00:02:42,812 --> 00:02:45,405
+together, and then adds the bias value.
+
+49
+00:02:45,405 --> 00:02:49,478
+The resulting sum is a single number that represents the preliminary
+
+50
+00:02:49,478 --> 00:02:50,959
+finding of that node.
+
+51
+00:02:50,959 --> 00:02:54,663
+This number is then passed forward to the next layer.
+
+52
+00:02:54,663 --> 00:02:59,107
+This cascade continues step by step until it reaches the output layer,
+
+53
+00:02:59,107 --> 00:03:03,180
+where the network produces its final prediction, such as guessing that
+
+54
+00:03:03,180 --> 00:03:05,402
+the image is the number seven.
+
+55
+00:03:05,402 --> 00:03:09,476
+This initial prediction is purely based on the current weights and
+
+56
+00:03:09,476 --> 00:03:13,179
+biases, meaning it might be wildly incorrect before the network
+
+57
+00:03:13,179 --> 00:03:13,920
+undergoes training.
+
+58
+00:03:13,920 --> 00:03:18,147
+If a neural network only performed basic multiplication and addition
+
+59
+00:03:18,147 --> 00:03:23,219
+across its layers, it would just be a series of linear equations.
+
+60
+00:03:23,219 --> 00:03:27,445
+Linear systems are limited; they cannot capture complex patterns, like
+
+61
+00:03:27,445 --> 00:03:30,826
+distinguishing a cat's face from a car's grille.
+
+62
+00:03:30,826 --> 00:03:33,785
+To solve this, we introduce activation functions.
+
+63
+00:03:33,785 --> 00:03:38,434
+An activation function sits inside each node and decides whether the
+
+64
+00:03:38,434 --> 00:03:43,506
+node's computed sum is important enough to pass along, and in what
+
+65
+00:03:43,506 --> 00:03:43,929
+format.
+
+66
+00:03:43,929 --> 00:03:47,733
+By applying a non-linear transformation to the data, activation
+
+67
+00:03:47,733 --> 00:03:51,537
+functions allow the network to learn intricate, curved boundaries
+
+68
+00:03:51,537 --> 00:03:52,805
+between different categories.
+
+69
+00:03:52,805 --> 00:03:56,609
+Common activation functions include the Sigmoid function, which squashes
+
+70
+00:03:56,609 --> 00:04:01,258
+outputs between zero and one, and ReLU, which stands for Rectified
+
+71
+00:04:01,258 --> 00:04:05,062
+Linear Unit, passing positive values straight through while turning
+
+72
+00:04:05,062 --> 00:04:06,753
+negative values into zero.
+
+73
+00:04:06,753 --> 00:04:10,557
+These mathematical functions give neural networks the flexibility to
+
+74
+00:04:10,557 --> 00:04:12,670
+solve highly complex real-world problems.
+
+75
+00:04:12,670 --> 00:04:16,566
+When a neural network makes a prediction during forward propagation, how
+
+76
+00:04:16,566 --> 00:04:19,754
+do we know if it got the answer right?
+
+77
+00:04:19,754 --> 00:04:21,525
+We use a loss function.
+
+78
+00:04:21,525 --> 00:04:25,421
+A loss function is a mathematical formula that compares the network's
+
+79
+00:04:25,421 --> 00:04:27,546
+prediction against the true, correct answer.
+
+80
+00:04:27,546 --> 00:04:32,859
+If the network predicts that a picture of a dog is a cat, the loss
+
+81
+00:04:32,859 --> 00:04:36,046
+function calculates a high penalty, representing a large error.
+
+82
+00:04:36,046 --> 00:04:40,651
+If the prediction is very close to the truth, the penalty is small.
+
+83
+00:04:40,651 --> 00:04:44,901
+When we calculate this error across an entire dataset of many examples,
+
+84
+00:04:44,901 --> 00:04:47,735
+we get what is called the cost function.
+
+85
+00:04:47,735 --> 00:04:51,277
+The cost function provides a single score representing the overall
+
+86
+00:04:51,277 --> 00:04:52,693
+performance of the model.
+
+87
+00:04:52,693 --> 00:04:57,298
+A high cost means the model is performing poorly, while a low cost
+
+88
+00:04:57,298 --> 00:04:58,360
+indicates high accuracy.
+
+89
+00:04:58,360 --> 00:05:03,319
+The primary goal of training a neural network is to drive this cost as
+
+90
+00:05:03,319 --> 00:05:05,090
+close to zero as possible.
+
+91
+00:05:05,090 --> 00:05:09,213
+Reducing the cost requires a feedback mechanism, which is where
+
+92
+00:05:09,213 --> 00:05:12,100
+backpropagation and gradient descent come into play.
+
+93
+00:05:12,100 --> 00:05:16,636
+Once the loss function calculates the error at the output layer,
+
+94
+00:05:16,636 --> 00:05:20,759
+backpropagation travels backward through the network, from the output to
+
+95
+00:05:20,759 --> 00:05:21,584
+the input.
+
+96
+00:05:21,584 --> 00:05:26,944
+It uses calculus to figure out exactly how much each weight and bias
+
+97
+00:05:26,944 --> 00:05:29,006
+contributed to the final error.
+
+98
+00:05:29,006 --> 00:05:32,717
+Armed with this blame-assignment information, the network applies an
+
+99
+00:05:32,717 --> 00:05:34,779
+optimization algorithm called gradient descent.
+
+100
+00:05:34,779 --> 00:05:39,727
+Gradient descent tweaks the weights and biases by tiny amounts in the
+
+101
+00:05:39,727 --> 00:05:41,789
+direction that reduces the error.
+
+102
+00:05:41,789 --> 00:05:45,500
+By repeating this cycle of forward propagation, error calculation,
+
+103
+00:05:45,500 --> 00:05:49,211
+backpropagation, and weight adjustment across thousands or millions of
+
+104
+00:05:49,211 --> 00:05:51,685
+examples, the network gradually tunes itself.
+
+105
+00:05:51,685 --> 00:05:56,633
+It learns from its mistakes, transforming from a random guesser into a
+
+106
+00:05:56,633 --> 00:05:57,870
+highly accurate predictor.
+
+107
+00:05:57,870 --> 00:06:02,564
+In summary, artificial neural networks mimic biological systems to
+
+108
+00:06:02,564 --> 00:06:07,779
+process data, learn from experience, and make complex decisions through
+
+109
+00:06:07,779 --> 00:06:10,908
+structured layers, mathematical adjustments, and continuous
+
+110
+00:06:10,908 --> 00:06:11,430
+optimization.

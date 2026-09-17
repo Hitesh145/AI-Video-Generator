@@ -1,5 +1,13 @@
 from pydantic import BaseModel, Field
 
+from schemas.visual import (
+    ScenePlan,
+    VisualAction,
+    VisualElement,
+    VisualRelationship,
+    VisualScene,
+)
+
 
 class UserLessonRequest(BaseModel):
     request: str = Field(
@@ -18,6 +26,7 @@ class LessonRequest(BaseModel):
         description="The depth of explanation, such as introductory or intermediate."
     )
 
+
 class LessonPlan(BaseModel):
     title: str = Field(
         description="The title of the educational lesson."
@@ -28,3 +37,19 @@ class LessonPlan(BaseModel):
     sections: list[str] = Field(
         description="The ordered sequence of concepts to teach."
     )
+
+
+class ScriptSection(BaseModel):
+    section_title: str
+    narration: str
+
+
+class LessonScript(BaseModel):
+    introduction: str
+    sections: list[ScriptSection]
+    conclusion: str
+
+
+class LessonScriptRequest(BaseModel):
+    lesson_request: LessonRequest
+    lesson_plan: LessonPlan

@@ -1,0 +1,45 @@
+{
+  "topic": "Binary Search",
+  "audience": "Beginner",
+  "key_concepts": [
+    "Sorted data requirement",
+    "Divide and conquer strategy",
+    "Midpoint checking",
+    "Time complexity comparison (Binary vs. Linear search)"
+  ],
+  "facts": [
+    {
+      "claim": "Binary search only works on data that is already sorted in a specific order (ascending or descending).",
+      "importance": "high",
+      "explanation": "If the list is not sorted, eliminating half of the elements based on size does not guarantee that the target value is excluded or included correctly.",
+      "source_type": "established domain knowledge"
+    },
+    {
+      "claim": "Binary search cuts the search space in half with each comparison.",
+      "importance": "high",
+      "explanation": "Instead of checking every single item one by one, binary search checks the middle item and immediately discards half of the remaining items.",
+      "source_type": "established domain knowledge"
+    },
+    {
+      "claim": "The time complexity of binary search is O(log n), making it significantly faster for large datasets than linear search which is O(n).",
+      "importance": "high",
+      "explanation": "As the dataset grows larger, linear search takes proportionally more time, whereas binary search increases in steps very slowly.",
+      "source_type": "textbook-level knowledge"
+    },
+    {
+      "claim": "Binary search compares the target value to the middle element of the array to decide whether to search the left or right half.",
+      "importance": "medium",
+      "explanation": "This comparison drives the iterative or recursive splitting process of the algorithm.",
+      "source_type": "established domain knowledge"
+    }
+  ],
+  "conflicting_information": [
+    "Beginners often confuse whether binary search can be applied to linked lists efficiently; while possible, random access is slow in linked lists, making binary search impractical for them without modification."
+  ],
+  "gaps": [
+    {
+      "question": "Should the lesson cover the difference between iterative and recursive implementations of binary search?",
+      "reason": "For an introductory 10-minute beginner lesson, diving into recursion might add unnecessary complexity, but mentioning it could be relevant depending on the curriculum path."
+    }
+  ]
+}

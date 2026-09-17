@@ -1,0 +1,7 @@
+1
+00:00:00,000 --> 00:00:04,419
+Show a sorted array, highlight the middle value, and discard the half
+
+2
+00:00:04,419 --> 00:00:06,260
+that cannot contain the target.

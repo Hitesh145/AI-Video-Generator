@@ -1,0 +1,45 @@
+{
+  "topic": "Neural network search",
+  "audience": "Beginner",
+  "key_concepts": [
+    "Vector embeddings",
+    "Semantic search vs. keyword search",
+    "Distance metrics in vector spaces",
+    "Index creation and approximate nearest neighbor (ANN) search"
+  ],
+  "facts": [
+    {
+      "claim": "Traditional keyword search relies on matching exact words, whereas neural network search understands the meaning behind the words.",
+      "importance": "high",
+      "explanation": "This is the fundamental distinction that helps beginners understand why neural network search is useful for handling synonyms and context.",
+      "source_type": "established domain knowledge"
+    },
+    {
+      "claim": "Neural network search converts text, images, or audio into numerical representations called vector embeddings.",
+      "importance": "high",
+      "explanation": "Embeddings are the core data structure that allows computers to perform mathematical operations on conceptual meaning.",
+      "source_type": "textbook-level knowledge"
+    },
+    {
+      "claim": "In a vector space, items with similar meanings are located close to each other, while dissimilar items are located far apart.",
+      "importance": "high",
+      "explanation": "Visualizing meaning as distance in a geometric space makes the search process intuitive for beginners.",
+      "source_type": "established domain knowledge"
+    },
+    {
+      "claim": "Approximate Nearest Neighbor (ANN) algorithms are used to quickly find similar vectors in large datasets without comparing every single item.",
+      "importance": "medium",
+      "explanation": "Explains how neural network search scales efficiently to millions or billions of items.",
+      "source_type": "textbook-level knowledge"
+    }
+  ],
+  "conflicting_information": [
+    "Beginners often confuse neural network search with traditional relational database indexing (like B-trees), failing to realize that vector search handles fuzzy semantic similarity rather than exact matches."
+  ],
+  "gaps": [
+    {
+      "question": "What specific ANN algorithm (e.g., HNSW vs. IVF) should be briefly mentioned in an introductory lesson?",
+      "reason": "Naming a specific algorithm might add unnecessary technical jargon for beginners, or it might be useful to ground the concept in reality."
+    }
+  ]
+}
