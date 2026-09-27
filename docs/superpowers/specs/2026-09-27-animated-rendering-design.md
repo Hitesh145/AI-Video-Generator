@@ -82,7 +82,8 @@ class Route(BaseModel):
     section_index: int
     path: Literal["trace", "codegen"]
     tracer: str | None = None
-    inputs: dict[str, Any] = {}
+    inputs_json: str = "{}"    # JSON object string (Gemini structured output handles
+                               # open-ended dicts poorly); parsed with the tracer's schema
 
 class RoutePlan(BaseModel):
     routes: list[Route]        # exactly one per section
@@ -93,7 +94,7 @@ class ArrayState(BaseModel):
     highlighted: list[int] = []        # cells being compared
     dimmed: list[int] = []             # cells ruled out
     swapped: tuple[int, int] | None = None
-    sorted_boundary: int | None = None # cells [0, boundary) are sorted
+    sorted_indices: list[int] = []     # cells in final position (left or right side)
     found: int | None = None           # index of located element
 
 class TraceStep(BaseModel):
@@ -138,8 +139,8 @@ Input limits enforced by each schema: 2–12 values (readability at 854×480), v
 |---|---|---|
 | `binary_search` | sorted `values`, `target` | pointers lo/mid/hi, dimmed ruled-out halves, `found` |
 | `linear_search` | `values`, `target` | pointer i, highlighted current, `found` |
-| `bubble_sort` | `values` | pointers j/j+1, highlighted compare, `swapped`, `sorted_boundary` from right |
-| `insertion_sort` | `values` | pointer key/j, `swapped`, `sorted_boundary` from left |
+| `bubble_sort` | `values` | pointer j, highlighted pair, `swapped`, `sorted_indices` growing from right |
+| `insertion_sort` | `values` | pointer key, `swapped`, `sorted_indices` growing from left |
 
 `binary_search` rejects unsorted input at validation time.
 
@@ -150,10 +151,12 @@ Input limits enforced by each schema: 2–12 values (readability at 854×480), v
 Each narrated segment is synthesized with TTS separately; the segment's measured duration is split across its steps (grouped steps get 0.6 s each; the narrated step gets the remainder, minimum 1.0 s). The segment audio files are concatenated into the section audio.
 
 ### Array template
-- `array_diff.plan_ops(prev: ArrayState, curr: ArrayState) -> list[Op]` is pure and Manim-free. Ops: `MovePointer(name, to)`, `AddPointer`, `RemovePointer`, `Highlight(indices)`, `Unhighlight`, `Dim(indices)`, `Swap(i, j)`, `SetSortedBoundary(n)`, `MarkFound(i)`.
+- `array_diff.py` is pure and Manim-free:
+  - `plan_ops(prev, curr) -> list[Op]` for structural changes: `SwapCells(i, j)`, `AddPointer(name, index)`, `MovePointer(name, index)`, `RemovePointer(name)`, `MarkFound(index)`.
+  - `cell_style(state, index) -> CellStyle(role, opacity)` for colouring; role is one of normal / highlight / sorted / found. The template animates every cell to its style each step.
 - `ArrayScene` draws a row of cells with value labels and index labels, pointers as labelled arrows below cells, and a section title at the top. For each step it plays the ops (run time ≤ min(0.8 s, 60% of step duration)) and then `wait`s for the rest of the step duration.
 - Visual language: highlight = amber fill, dimmed = 30% opacity, sorted = green fill, found = green fill + scale pulse, swap = cells move along arcs.
-- Rendered via `manim render` subprocess on a generated entry file that loads steps/durations from JSON; 854×480, 30 fps, Manim Community Edition, `Text` only (no LaTeX).
+- Rendered via `manim render` subprocess on `array_scene.py`; steps/durations are written to JSON and the path passed in the `ARRAY_SCENE_DATA` environment variable; 854×480, 30 fps, Manim Community Edition, `Text` only (no LaTeX).
 
 ## 6. Codegen path
 
