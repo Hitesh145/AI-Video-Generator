@@ -5,3 +5,5 @@ python-dotenv
 google-genai
 pillow
 edge-tts
+manim
+pytest

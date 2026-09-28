@@ -2,6 +2,13 @@ venv/
 __pycache__/
 *.pyc
 .env
-**/test*
+.pytest_cache/
 **/*.test.*
 **/*.spec.*
+
+# generated media
+backend/output/
+backend/test_animation/
+backend/test_output/
+backend/media/
+**/tempCodeRunnerFile.py
