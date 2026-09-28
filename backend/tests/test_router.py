@@ -22,7 +22,7 @@ def test_resolves_trace_and_codegen():
     result = route(FakeLLM([plan(
         {"section_index": 0, "path": "codegen"},
         {"section_index": 1, "path": "trace", "tracer": "binary_search",
-         "inputs_json": '{"values": [1, 3, 5, 7], "target": 5}'},
+         "values": [1, 3, 5, 7], "target": 5},
     )]))
 
     assert [r.path for r in result.routes] == ["codegen", "trace"]
@@ -45,7 +45,7 @@ def test_prompt_lists_tracers_and_sections():
 def test_unknown_tracer_falls_back_to_codegen():
     result = route(FakeLLM([plan(
         {"section_index": 0, "path": "codegen"},
-        {"section_index": 1, "path": "trace", "tracer": "quick_sort", "inputs_json": "{}"},
+        {"section_index": 1, "path": "trace", "tracer": "quick_sort", "values": [3, 1]},
     )]))
 
     assert result.routes[1].path == "codegen"
@@ -56,20 +56,33 @@ def test_invalid_inputs_fall_back_to_codegen():
     result = route(FakeLLM([plan(
         {"section_index": 0, "path": "codegen"},
         {"section_index": 1, "path": "trace", "tracer": "binary_search",
-         "inputs_json": '{"values": [5, 1, 3], "target": 1}'},
+         "values": [5, 1, 3], "target": 1},
     )]))
 
     assert result.routes[1].path == "codegen"
     assert "invalid inputs" in result.warnings[0]
+    assert "sorted" in result.warnings[0]
 
 
-def test_malformed_json_falls_back_to_codegen():
+def test_missing_inputs_fall_back_to_codegen():
+    # Gemini's observed failure mode: tracer chosen, inputs left empty
     result = route(FakeLLM([plan(
         {"section_index": 0, "path": "codegen"},
-        {"section_index": 1, "path": "trace", "tracer": "binary_search", "inputs_json": "{values:"},
+        {"section_index": 1, "path": "trace", "tracer": "binary_search"},
     )]))
 
     assert result.routes[1].path == "codegen"
+    assert "values" in result.warnings[0]
+
+
+def test_search_target_is_optional_for_sorts():
+    result = route(FakeLLM([plan(
+        {"section_index": 0, "path": "codegen"},
+        {"section_index": 1, "path": "trace", "tracer": "bubble_sort", "values": [3, 1, 2]},
+    )]))
+
+    assert result.routes[1].path == "trace"
+    assert result.routes[1].inputs.values == [3, 1, 2]
 
 
 def test_duplicate_indices_fall_back_to_codegen():
@@ -84,7 +97,45 @@ def test_duplicate_indices_fall_back_to_codegen():
 
 
 def test_llm_failure_falls_back_to_codegen():
-    result = route(FakeLLM([RuntimeError("timeout")]))
+    result = route(FakeLLM([RuntimeError("timeout"), RuntimeError("timeout")]))
 
     assert [r.path for r in result.routes] == ["codegen", "codegen"]
     assert "timeout" in result.warnings[0]
+
+
+def test_retries_once_after_unusable_plan():
+    llm = FakeLLM([
+        plan({"section_index": 0, "path": "codegen"}),  # too few routes
+        plan(
+            {"section_index": 0, "path": "codegen"},
+            {"section_index": 1, "path": "trace", "tracer": "bubble_sort", "values": [3, 1, 2]},
+        ),
+    ])
+
+    result = route(llm)
+
+    assert [r.path for r in result.routes] == ["codegen", "trace"]
+    assert result.warnings == []
+    assert len(llm.prompts) == 2
+
+
+def test_missing_search_target_is_picked_from_values():
+    # Gemini's observed failure mode: values filled, optional target omitted
+    result = route(FakeLLM([plan(
+        {"section_index": 0, "path": "codegen"},
+        {"section_index": 1, "path": "trace", "tracer": "binary_search", "values": [1, 3, 5, 7, 9, 11]},
+    )]))
+
+    assert result.routes[1].path == "trace"
+    assert result.routes[1].inputs.target in [1, 3, 5, 7, 9, 11]
+    assert result.warnings == []
+
+
+def test_route_schema_bounds_values_for_the_llm():
+    from animation.schemas import Route
+
+    values_schema = Route.model_json_schema()["properties"]["values"]
+
+    assert values_schema["maxItems"] == 8
+    assert values_schema["items"]["minimum"] == -99
+    assert values_schema["items"]["maximum"] == 999

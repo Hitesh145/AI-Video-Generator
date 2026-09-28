@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -38,9 +38,19 @@ class Route(BaseModel):
         default=None,
         description="Tracer name when path is 'trace'.",
     )
-    inputs_json: str = Field(
-        default="{}",
-        description="JSON object string with the tracer inputs when path is 'trace'.",
+    # Plain structured fields rather than a JSON string: Gemini reliably fills
+    # these, but mostly left a JSON-in-a-string field empty or truncated. The
+    # bounds go into the schema Gemini decodes against; without them it
+    # sometimes generated runaway number lists. The cap is 8 (tracers accept 12)
+    # because Gemini pads to the maximum with filler values.
+    values: list[Annotated[int, Field(ge=-99, le=999)]] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Array values for the tracer when path is 'trace' (5-8 values).",
+    )
+    target: Annotated[int, Field(ge=-99, le=999)] | None = Field(
+        default=None,
+        description="Value to search for, for search tracers only.",
     )
 
 

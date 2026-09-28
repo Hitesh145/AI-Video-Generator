@@ -38,7 +38,7 @@ UserLessonRequest
 
 ### Key decisions
 1. **Unit of rendering = script section.** The script's introduction, each `ScriptSection`, and the conclusion each become one `RenderSection` rendered to its own mp4. Lessons can mix paths; failures degrade one section only.
-2. **Router is one structured LLM call** that sees all sections and the tracer catalogue (name, description, input JSON schema) and returns a route per section. Tracer inputs are validated against the tracer's Pydantic schema; invalid → codegen.
+2. **Router is one structured LLM call** that sees all sections and the tracer catalogue (name, description, input JSON schema) and returns a route per section with `values`/`target` filled for trace routes. Tracer inputs are validated against the tracer's Pydantic schema; invalid → codegen, and the warning names the failing fields.
 3. **Audio is the clock.** Trace path: per-step TTS, template holds each step for exactly its audio duration. Codegen path: LLM receives the section's audio duration; the rendered clip is then padded/sped/trimmed to match.
 4. **Slideshow renderer remains as the last-resort fallback** so a lesson always produces a video.
 5. **Removed:** the topic special-casing and `rendering/binary_search_render.py` (already deleted in pre-implementation cleanup); `caption_renderer.py` and `render_pipeline.py` are removed during integration. Burned-in captions (`caption_renderer`) are no longer applied to animated clips; subtitles are delivered as a soft track.
@@ -82,8 +82,8 @@ class Route(BaseModel):
     section_index: int
     path: Literal["trace", "codegen"]
     tracer: str | None = None
-    inputs_json: str = "{}"    # JSON object string (Gemini structured output handles
-                               # open-ended dicts poorly); parsed with the tracer's schema
+    values: list[int] = []     # tracer inputs as plain structured fields; a JSON-string
+    target: int | None = None  # field was left empty/truncated by Gemini in live tests
 
 class RoutePlan(BaseModel):
     routes: list[Route]        # exactly one per section

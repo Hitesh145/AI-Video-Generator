@@ -28,27 +28,39 @@ class RoutingResult:
 
 
 class AnimationRouter:
-    def __init__(self, llm: StructuredGenerator, registry: TracerRegistry) -> None:
+    def __init__(self, llm: StructuredGenerator, registry: TracerRegistry, max_attempts: int = 2) -> None:
         self.llm = llm
         self.registry = registry
+        self.max_attempts = max_attempts
 
     def route(self, sections: list[RenderSection]) -> RoutingResult:
         if not sections:
             return RoutingResult([], [])
 
-        try:
-            result = self.llm.generate_structured(self._build_prompt(sections), RoutePlan)
-            plan = RoutePlan.model_validate(result.model_dump())
-        except Exception as exc:
-            return self._all_codegen(sections, f"Animation router failed ({exc}); all sections use generated animation.")
+        prompt = self._build_prompt(sections)
+        expected = [section.index for section in sections]
+        plan: RoutePlan | None = None
+        problem = ""
+        for _ in range(self.max_attempts):
+            try:
+                result = self.llm.generate_structured(prompt, RoutePlan)
+                candidate = RoutePlan.model_validate(result.model_dump())
+            except Exception as exc:
+                problem = f"Animation router failed ({exc})"
+                continue
 
-        indices = [route.section_index for route in plan.routes]
-        if sorted(indices) != [section.index for section in sections]:
-            return self._all_codegen(
-                sections,
-                f"Animation router returned routes for sections {indices} but expected "
-                f"{[section.index for section in sections]}; all sections use generated animation.",
-            )
+            indices = [route.section_index for route in candidate.routes]
+            if sorted(indices) != expected:
+                problem = (
+                    f"Animation router returned routes for sections {indices} but expected {expected}"
+                )
+                continue
+
+            plan = candidate
+            break
+
+        if plan is None:
+            return self._all_codegen(sections, f"{problem}; all sections use generated animation.")
 
         by_index = {route.section_index: route for route in plan.routes}
         warnings: list[str] = []
@@ -67,12 +79,25 @@ class AnimationRouter:
             )
             return codegen
 
+        raw_inputs: dict[str, object] = {"values": route.values}
+        if route.target is not None:
+            raw_inputs["target"] = route.target
+        elif "target" in tracer.input_schema.model_fields and route.values:
+            # The LLM often omits the target; pick one from the array (right of
+            # the middle, so a search takes a few steps). Narration is written
+            # from the trace, so it stays consistent with this choice.
+            raw_inputs["target"] = route.values[len(route.values) * 2 // 3]
+
         try:
-            inputs = tracer.input_schema.model_validate_json(route.inputs_json)
+            inputs = tracer.input_schema.model_validate(raw_inputs)
         except ValidationError as exc:
+            problems = "; ".join(
+                f"{'.'.join(str(part) for part in error['loc']) or 'inputs'}: {error['msg']}"
+                for error in exc.errors()
+            )
             warnings.append(
                 f"Section '{section.title}': invalid inputs for {tracer.name} "
-                f"({exc.error_count()} errors), using generated animation."
+                f"({problems}), using generated animation."
             )
             return codegen
 
@@ -106,11 +131,12 @@ Sections:
 
 Rules:
 1. Return exactly one route per section, using its section_index.
-2. For "trace", set "tracer" to a registered name and "inputs_json" to a JSON object
-   string that matches that tracer's input schema.
+2. For "trace", set "tracer" to a registered name and ALWAYS fill "values" (and
+   "target" for search tracers) so they match that tracer's input schema. A trace route
+   with empty values is rejected.
 3. If the narration uses a concrete example (specific numbers or a target), use exactly
    those values. Otherwise choose a small illustrative example: 5-8 values for searches,
    5-7 values for sorts.
 4. binary_search values must be sorted ascending.
-5. For "codegen", leave tracer empty and inputs_json as "{{}}".
+5. For "codegen", leave tracer, values and target empty.
 """
