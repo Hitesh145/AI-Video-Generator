@@ -41,7 +41,7 @@ UserLessonRequest
 2. **Router is one structured LLM call** that sees all sections and the tracer catalogue (name, description, input JSON schema) and returns a route per section. Tracer inputs are validated against the tracer's Pydantic schema; invalid → codegen.
 3. **Audio is the clock.** Trace path: per-step TTS, template holds each step for exactly its audio duration. Codegen path: LLM receives the section's audio duration; the rendered clip is then padded/sped/trimmed to match.
 4. **Slideshow renderer remains as the last-resort fallback** so a lesson always produces a video.
-5. **Removed:** `DemoVideoService._get_animation_topic`, `_build_animation_scene_plan`, and `rendering/binary_search_render.py` (replaced by router + tracer registry). Burned-in captions (`caption_renderer`) are no longer applied to animated clips; subtitles are delivered as a soft track.
+5. **Removed:** the topic special-casing and `rendering/binary_search_render.py` (already deleted in pre-implementation cleanup); `caption_renderer.py` and `render_pipeline.py` are removed during integration. Burned-in captions (`caption_renderer`) are no longer applied to animated clips; subtitles are delivered as a soft track.
 
 ## 3. New package layout
 
@@ -227,6 +227,6 @@ pytest under `backend/tests/`; slow tests marked `@pytest.mark.slow`.
 
 **Milestone 1 (this spec):** router, step narrator, array template, 4 tracers, codegen path with style kit and validator, slideshow fallback, integration, pytest suite, frontend path badges.
 
-**Housekeeping:** add `backend/output/`, `backend/test_animation/`, `backend/test_output/`, `tempCodeRunnerFile.py`, `__pycache__/` to `.gitignore`. `backend/rendering/engine/` and `backend/rendering/renderers/` are left untouched.
+**Housekeeping:** add `backend/output/`, `backend/test_animation/`, `backend/test_output/`, `tempCodeRunnerFile.py`, `__pycache__/` to `.gitignore`. The experimental custom engine (`backend/rendering/engine/`, `primitives/`, `renderers/`) and the hard-coded `binary_search_render.py` were removed on 2026-09-28 ahead of implementation.
 
 **Out of scope:** tree and graph templates (milestone 2), job queue / async generation, voice changes, frontend redesign, production-grade sandboxing.

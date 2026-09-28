@@ -21,7 +21,7 @@
 - Codegen sandbox is accident protection only — do not expose the API publicly.
 - Theme colours live only in `backend/animation/codegen/kit.py`; `kit.py` must import nothing outside `manim` (it is copied next to generated scenes).
 - Slow tests (real Manim/ffmpeg) are marked `@pytest.mark.slow` and excluded by default; run them with `python -m pytest -m slow`.
-- Do not stage the deleted `backend/output/**` files or anything in `backend/rendering/engine/`, `backend/rendering/renderers/` — commit only the paths listed in each task.
+- Do not stage the deleted `backend/output/**` files — commit only the paths listed in each task.
 - Every commit message ends with the trailer line: `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`
 
 ## Review Focus
@@ -3402,7 +3402,6 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/schemas/demo.py`
 - Modify: `backend/services/demo_video_service.py` (rewrite generation flow)
 - Modify: `backend/main.py` (wiring)
-- Delete: `backend/rendering/binary_search_render.py`
 - Test: `backend/tests/test_demo_video_service.py`
 
 **Interfaces:**
@@ -3936,11 +3935,14 @@ demo_video_service = DemoVideoService(
 
 Everything from `@app.get("/")` onward stays unchanged (the `/lesson/visual-plan` endpoint remains).
 
-- [ ] **Step 8: Delete the hard-coded binary search renderer**
+- [ ] **Step 8: Remove the slideshow-only modules the new flow no longer uses**
 
-Run: `git rm backend/rendering/binary_search_render.py`
-Then: `grep -rn "binary_search_render" backend --include=*.py`
-Expected: no matches (ignore anything under `backend/output/`).
+`apply_script_captions` and `render_scene_plan_frames` are no longer imported by `main.py`. Confirm, then delete:
+
+Run: `grep -rn "caption_renderer\|render_pipeline" backend --include=*.py | grep -v "^backend/output"`
+Expected: only `backend/services/tts_service.py` importing `narration_for_scene` from `caption_renderer`.
+Move `narration_for_scene` into `backend/services/tts_service.py` (it needs `from rendering.generic_frame_renderer import safe_text`), drop the `caption_renderer` import, then:
+Run: `git rm backend/rendering/caption_renderer.py backend/rendering/render_pipeline.py`
 
 - [ ] **Step 9: Verify the app imports and all tests pass**
 
@@ -3957,12 +3959,12 @@ git commit -m "Generate lessons from animated section clips
 
 Replace the visual-plan slideshow flow with the section animator, extract
 mux_video, add per-section summaries to the response and remove the
-hard-coded binary search renderer.
+caption and render-pipeline modules the new flow no longer uses.
 
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
-(`git rm` in Step 8 already staged the deletion; it is included in this commit.)
+(`git rm` in Step 8 already staged the deletions; they are included in this commit.)
 
 ---
 

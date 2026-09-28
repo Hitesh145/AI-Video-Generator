@@ -5,12 +5,11 @@ import re
 
 from pydantic import BaseModel
 
-from rendering.binary_search_render import render_binary_search_demo
 from rendering.subtitle_renderer import write_srt_file
 from schemas.demo import DemoVideoResponse
 from schemas.knowledge import KnowledgeBase, KnowledgeGap
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, UserLessonRequest
-from schemas.visual import ScenePlan, VisualAction, VisualElement, VisualScene
+from schemas.visual import ScenePlan
 from services.tts_service import SceneAudio, SceneTTSService, concat_scene_audio
 
 
@@ -107,12 +106,9 @@ class DemoVideoService:
             lesson_plan,
         )
         visual_plan = self.visual_planner_service.create_scene_plan(lesson_script)
-        animation_topic = self._get_animation_topic(lesson_request)
-        if animation_topic is not None:
-            visual_plan = self._build_animation_scene_plan(animation_topic, lesson_script)
 
         output_dir = self._create_output_dir(lesson_request.topic)
-        frame_paths = self._render_visual_frames(visual_plan, output_dir)
+        frame_paths = self.render_frames(visual_plan, output_dir)
         if not frame_paths:
             raise ValueError("Visual renderer did not produce any frames.")
 
@@ -220,20 +216,6 @@ class DemoVideoService:
 
         return lesson_request
 
-    def _render_visual_frames(self, visual_plan: ScenePlan, output_dir: Path) -> list[Path]:
-        topic = self._detect_animation_topic_from_visual_plan(visual_plan)
-        if topic == "binary_search":
-            return sorted(render_binary_search_demo(output_dir).glob("frame_*.png"))
-        return self.render_frames(visual_plan, output_dir)
-
-    def _detect_animation_topic_from_visual_plan(self, visual_plan: ScenePlan) -> str | None:
-        combined = " ".join(scene.section_title.lower() for scene in visual_plan.scenes)
-        if "binary" in combined and "search" in combined:
-            return "binary_search"
-        if "sorting" in combined:
-            return "sorting"
-        return None
-
     def _frame_durations_for_visual_plan(
         self,
         visual_plan: ScenePlan,
@@ -256,118 +238,6 @@ class DemoVideoService:
             raise ValueError("Expanded frame durations must match the number of rendered frames.")
 
         return frame_durations
-
-    def _get_animation_topic(self, lesson_request: LessonRequest) -> str | None:
-        topic = lesson_request.topic.lower()
-        if "binary search" in topic or "binary-search" in topic:
-            return "binary_search"
-        if "sorting" in topic:
-            return "sorting"
-        return None
-
-    def _build_animation_scene_plan(
-        self,
-        animation_topic: str,
-        lesson_script: LessonScript,
-    ) -> ScenePlan:
-        if animation_topic == "binary_search":
-            return ScenePlan(
-                scenes=[
-                    VisualScene(
-                        id="scene_1",
-                        section_title="Binary Search",
-                        narration_reference="script_section_1",
-                        purpose="Show how binary search narrows the search space step by step.",
-                        visual_type="animation",
-                        description="Show a sorted array, highlight the middle value, and discard the half that cannot contain the target.",
-                        layout="Horizontal array with a highlighted middle element and a shrinking search window.",
-                        elements=[
-                            VisualElement(
-                                id="array",
-                                type="data_structure",
-                                label="Array",
-                                description="The sorted list of values currently being searched.",
-                                properties={"values": [2, 5, 8, 12, 16, 23, 38]},
-                            ),
-                            VisualElement(
-                                id="target",
-                                type="value",
-                                label="Target",
-                                description="The number we want to find.",
-                                properties={"value": 23},
-                            ),
-                            VisualElement(
-                                id="middle",
-                                type="highlight",
-                                label="Middle",
-                                description="The current midpoint under comparison.",
-                                properties={"value": 12},
-                            ),
-                        ],
-                        actions=[
-                            VisualAction(
-                                order=1,
-                                type="highlight",
-                                target=["middle"],
-                                description="Highlight the middle element being compared to the target.",
-                            ),
-                            VisualAction(
-                                order=2,
-                                type="hide",
-                                target=["array"],
-                                description="Discard the half of the array that cannot contain the target.",
-                                parameters={"side": "left"},
-                            ),
-                        ],
-                        duration_seconds=5.0,
-                    )
-                ]
-            )
-
-        return ScenePlan(
-            scenes=[
-                VisualScene(
-                    id="scene_1",
-                    section_title="Sorting",
-                    narration_reference="script_section_1",
-                    purpose="Show how sorting compares and swaps values to organize the list.",
-                    visual_type="animation",
-                    description="Show a list of values moving into sorted order by comparing neighboring items.",
-                    layout="Horizontal list with a highlighted comparison pair and a moving sorted segment.",
-                    elements=[
-                        VisualElement(
-                            id="values",
-                            type="data_structure",
-                            label="Values",
-                            description="The unsorted list of numbers.",
-                            properties={"values": [5, 2, 9, 1, 7]},
-                        ),
-                        VisualElement(
-                            id="pair",
-                            type="highlight",
-                            label="Compare Pair",
-                            description="The current adjacent values being compared.",
-                            properties={"values": [2, 5]},
-                        ),
-                    ],
-                    actions=[
-                        VisualAction(
-                            order=1,
-                            type="highlight",
-                            target=["pair"],
-                            description="Highlight the adjacent values currently being compared.",
-                        ),
-                        VisualAction(
-                            order=2,
-                            type="show",
-                            target=["values"],
-                            description="Reveal the final sorted order after the comparison.",
-                        ),
-                    ],
-                    duration_seconds=5.0,
-                )
-            ]
-        )
 
     def _build_qc_warnings(self, knowledge_base: KnowledgeBase) -> list[str]:
         warnings: list[str] = []
