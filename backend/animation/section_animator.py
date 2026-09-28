@@ -6,7 +6,7 @@ from animation.router import ResolvedRoute, RoutingResult
 from animation.schemas import PathUsed, RenderSection, SectionClip, TraceStep
 from animation.timing import concat_audio_padded, fit_clip, step_durations_for_segment
 from animation.tracers.base import TracerRegistry
-from services.tts_service import SceneAudio
+from services.tts_service import SceneAudio, SilentTTSService
 
 
 ClipFitter = Callable[[Path, float, Path], Path]
@@ -92,10 +92,13 @@ class SectionAnimator:
             except Exception as exc:
                 warnings.append(f"Section '{section.title}': trace animation failed ({exc}); using generated animation.")
 
-        audio = self.synthesizer.synthesize_text(section.narration, section_dir / "narration.wav")
+        audio = self._synthesize(section, section.narration, section_dir / "narration.wav", warnings)
         duration = audio.duration_seconds
         path_used: PathUsed = "codegen"
+        clip_path = section_dir / "clip.mp4"
         try:
+            # Fitting stays inside the try: a scene can "render" yet produce a
+            # clip ffprobe cannot measure, and that must fall back, not crash.
             raw = self.codegen_renderer.render(
                 section,
                 duration,
@@ -103,6 +106,7 @@ class SectionAnimator:
                 section_dir / "codegen_raw.mp4",
                 output_dir / "codegen",
             )
+            video = self.fit_clip(raw, duration, clip_path)
         except Exception as exc:
             warnings.append(f"Section '{section.title}': generated animation failed ({exc}); using slideshow.")
             path_used = "slideshow"
@@ -113,12 +117,12 @@ class SectionAnimator:
                     section_dir / "slideshow_work",
                     section_dir / "slideshow_raw.mp4",
                 )
+                video = self.fit_clip(raw, duration, clip_path)
             except Exception as slideshow_exc:
                 raise SectionRenderError(
                     f"Section '{section.title}' could not be rendered: {slideshow_exc}"
                 ) from slideshow_exc
 
-        video = self.fit_clip(raw, duration, section_dir / "clip.mp4")
         return SectionClip(
             section_index=section.index,
             title=section.title,
@@ -129,6 +133,13 @@ class SectionAnimator:
             path_used=path_used,
             warnings=warnings,
         )
+
+    def _synthesize(self, section: RenderSection, text: str, output_path: Path, warnings: list[str]) -> SceneAudio:
+        try:
+            return self.synthesizer.synthesize_text(text, output_path)
+        except Exception as exc:
+            warnings.append(f"Section '{section.title}': narration audio failed ({exc}); using silence.")
+            return SilentTTSService().synthesize_text(text, output_path)
 
     def _trace_section(self, section: RenderSection, route: ResolvedRoute, section_dir: Path) -> SectionClip:
         tracer = self.registry.get(route.tracer or "")
@@ -143,9 +154,11 @@ class SectionAnimator:
         step_durations: list[float] = []
         texts: list[str] = []
         for number, segment in enumerate(segments):
-            audio = self.synthesizer.synthesize_text(
+            audio = self._synthesize(
+                section,
                 segment.text,
                 section_dir / "audio" / f"segment_{number:03d}.wav",
+                warnings,
             )
             durations = step_durations_for_segment(audio.duration_seconds, len(segment.step_indices) - 1)
             step_durations.extend(durations)

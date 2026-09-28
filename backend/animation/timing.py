@@ -106,7 +106,7 @@ def concat_clips(paths: list[Path], output_path: Path) -> Path:
     list_path = output_path.with_suffix(".ffconcat")
     lines = ["ffconcat version 1.0"]
     for path in paths:
-        escaped = str(path.resolve()).replace("\\", "/").replace("'", "'\''")
+        escaped = str(path.resolve()).replace("\\", "/").replace("'", "'\\''")
         lines.append(f"file '{escaped}'")
     list_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

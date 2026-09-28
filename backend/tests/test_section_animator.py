@@ -147,3 +147,34 @@ def test_router_warnings_are_returned(tmp_path):
     _, warnings = animator.animate([TEXT_SECTION], tmp_path)
 
     assert warnings == ["router said no"]
+
+
+def test_unreadable_codegen_clip_falls_back_to_slideshow(tmp_path):
+    animator, _, _, slideshow = make([ResolvedRoute(1, "codegen")])
+
+    def fit(raw, seconds, out):
+        if raw.name == "codegen_raw.mp4":
+            raise ValueError("Durations must be greater than 0.")
+        return out
+
+    animator.fit_clip = fit
+    clips, _ = animator.animate([TEXT_SECTION], tmp_path)
+
+    assert clips[0].path_used == "slideshow"
+    assert len(slideshow.calls) == 1
+
+
+class FailingSynth:
+    def synthesize_text(self, text, output_path):
+        raise RuntimeError("edge-tts network error")
+
+
+def test_tts_failure_uses_silent_narration(tmp_path):
+    animator, _, codegen, _ = make([ResolvedRoute(1, "codegen")])
+    animator.synthesizer = FailingSynth()
+
+    clips, _ = animator.animate([TEXT_SECTION], tmp_path)
+
+    assert clips[0].path_used == "codegen"
+    assert clips[0].segment_durations[0] > 0
+    assert "narration audio failed" in clips[0].warnings[0]

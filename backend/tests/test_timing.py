@@ -73,3 +73,12 @@ def test_concat_clips_sums_durations(tmp_path):
     out = concat_clips([a, b], tmp_path / "out.mp4")
 
     assert probe_duration(out) == pytest.approx(3.0, abs=0.15)
+
+
+@pytest.mark.slow
+def test_concat_clips_handles_apostrophe_in_path(tmp_path):
+    folder = tmp_path / "o'brien"
+    a = fit_clip(make_test_clip(folder / "a.mp4", 1.0), 1.0, folder / "fa.mp4")
+    out = concat_clips([a, a], folder / "out.mp4")
+
+    assert probe_duration(out) == pytest.approx(2.0, abs=0.15)

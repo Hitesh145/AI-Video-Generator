@@ -139,3 +139,15 @@ def test_route_schema_bounds_values_for_the_llm():
     assert values_schema["maxItems"] == 8
     assert values_schema["items"]["minimum"] == -99
     assert values_schema["items"]["maximum"] == 999
+
+
+def test_out_of_range_route_only_affects_its_section():
+    # a 10-value example is valid for tracers' limits in the spec but over the
+    # LLM-facing cap; it must not invalidate the other routes
+    result = route(FakeLLM([plan(
+        {"section_index": 0, "path": "trace", "tracer": "bubble_sort", "values": list(range(13))},
+        {"section_index": 1, "path": "trace", "tracer": "bubble_sort", "values": [3, 1, 2]},
+    )]))
+
+    assert [r.path for r in result.routes] == ["codegen", "trace"]
+    assert len(result.warnings) == 1
