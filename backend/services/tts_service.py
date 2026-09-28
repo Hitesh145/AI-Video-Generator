@@ -31,6 +31,9 @@ class TTSSynthesizer(Protocol):
     ) -> SceneAudio:
         ...
 
+    def synthesize_text(self, text: str, output_path: Path) -> SceneAudio:
+        ...
+
 
 def _write_silent_wav(output_path: Path, duration_seconds: float) -> None:
     sample_rate = 22050
@@ -108,11 +111,16 @@ class FakeTTSService:
         output_path: Path,
     ) -> SceneAudio:
         normalized = normalize_text(narration_text, fallback=scene.description)
+        audio = self.synthesize_text(normalized, output_path)
+        return audio.model_copy(update={"scene_id": scene.id})
+
+    def synthesize_text(self, text: str, output_path: Path) -> SceneAudio:
+        normalized = normalize_text(text)
         duration = estimate_speech_duration_seconds(normalized)
         _write_silent_wav(output_path, duration)
 
         return SceneAudio(
-            scene_id=scene.id,
+            scene_id=output_path.stem,
             narration_text=normalized,
             audio_path=str(output_path),
             duration_seconds=_measure_wav_duration_seconds(output_path),
@@ -139,6 +147,11 @@ class EdgeTTSService:
         narration_text: str,
         output_path: Path,
     ) -> SceneAudio:
+        normalized = normalize_text(narration_text, fallback=scene.description)
+        audio = self.synthesize_text(normalized, output_path)
+        return audio.model_copy(update={"scene_id": scene.id})
+
+    def synthesize_text(self, text: str, output_path: Path) -> SceneAudio:
         try:
             import edge_tts
         except ImportError as exc:
@@ -146,7 +159,10 @@ class EdgeTTSService:
                 "edge-tts is not installed. Install it with: pip install edge-tts"
             ) from exc
 
-        normalized = normalize_text(narration_text, fallback=scene.description)
+        normalized = normalize_text(text)
+        if not normalized:
+            return FakeTTSService().synthesize_text(text, output_path)
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         async def _run() -> None:
@@ -161,7 +177,7 @@ class EdgeTTSService:
             duration = estimate_speech_duration_seconds(normalized)
 
         return SceneAudio(
-            scene_id=scene.id,
+            scene_id=output_path.stem,
             narration_text=normalized,
             audio_path=str(output_path),
             duration_seconds=duration,
