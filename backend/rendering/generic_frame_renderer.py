@@ -4,7 +4,7 @@ import textwrap
 from PIL import Image, ImageDraw, ImageFont
 
 from services.text_normalizer import normalize_text
-from schemas.visual import ScenePlan, VisualElement, VisualScene
+from schemas.visual import VisualElement, VisualScene
 
 
 WIDTH = 854
@@ -116,7 +116,7 @@ def element_label(element: VisualElement) -> str:
 
 class GenericFrameRenderer:
     """
-    Deterministic renderer for renderer-neutral ScenePlan objects.
+    Deterministic single-slide renderer for renderer-neutral VisualScene objects.
     """
 
     def __init__(self, width: int = WIDTH, height: int = HEIGHT) -> None:
@@ -126,93 +126,6 @@ class GenericFrameRenderer:
         self.body_font = get_font(20)
         self.small_font = get_font(16)
         self.label_font = get_font(18)
-
-    def render_scene_plan(
-        self,
-        scene_plan: ScenePlan,
-        output_dir: Path,
-    ) -> list[Path]:
-        frames_dir = output_dir / "frames"
-        frames_dir.mkdir(parents=True, exist_ok=True)
-
-        frame_paths: list[Path] = []
-        for scene in scene_plan.scenes:
-            if self._is_animation_scene(scene):
-                phase_paths = self.render_animation_scene(scene, frames_dir, len(frame_paths))
-                frame_paths.extend(phase_paths)
-            else:
-                frame_number = len(frame_paths) + 1
-                frame_path = frames_dir / f"frame_{frame_number:02d}.png"
-                self.render_scene(scene, frame_path)
-                frame_paths.append(frame_path)
-
-        return frame_paths
-
-    def _is_animation_scene(self, scene: VisualScene) -> bool:
-        return safe_text(scene.visual_type).lower() == "animation"
-
-    def render_animation_scene(
-        self,
-        scene: VisualScene,
-        frames_dir: Path,
-        start_index: int,
-    ) -> list[Path]:
-        phase_count = 3
-        phase_paths: list[Path] = []
-
-        for phase in range(phase_count):
-            frame_number = start_index + phase + 1
-            frame_path = frames_dir / f"frame_{frame_number:02d}.png"
-            self.render_animation_phase(scene, frame_path, phase, phase_count)
-            phase_paths.append(frame_path)
-
-        return phase_paths
-
-    def render_animation_phase(
-        self,
-        scene: VisualScene,
-        output_path: Path,
-        phase: int,
-        phase_count: int,
-    ) -> Path:
-        image = Image.new("RGB", (self.width, self.height), BACKGROUND)
-        draw = ImageDraw.Draw(image)
-
-        self._draw_header(draw, scene)
-
-        accent = ACCENT if phase == 1 else (0, 128, 120) if phase == 2 else (124, 58, 237)
-        draw.rounded_rectangle(
-            (38, 84, self.width - 38, 112),
-            radius=8,
-            fill=accent,
-        )
-        draw.text(
-            (60, 90),
-            f"Animation step {phase + 1}/{phase_count}",
-            font=self.small_font,
-            fill=LIGHT_TEXT,
-        )
-
-        layout_mode = self._resolve_layout_mode(scene)
-        if layout_mode == "comparison":
-            self._draw_comparison(draw, scene)
-        elif layout_mode == "connected":
-            self._draw_connected_elements(draw, scene)
-        else:
-            self._draw_text_scene(draw, scene)
-
-        if phase == 0:
-            draw.text((60, 370), "Initial view", font=self.body_font, fill=TEXT)
-        elif phase == 1:
-            draw.text((60, 370), "Highlight active step", font=self.body_font, fill=TEXT)
-        else:
-            draw.text((60, 370), "Result after update", font=self.body_font, fill=TEXT)
-
-        self._draw_action_summary(draw, scene)
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        image.save(output_path)
-        return output_path
 
     def render_scene(self, scene: VisualScene, output_path: Path) -> Path:
         image = Image.new("RGB", (self.width, self.height), BACKGROUND)

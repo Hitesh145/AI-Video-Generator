@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+from animation.schemas import SectionSummary
 from schemas.knowledge import KnowledgeBase
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript
 from schemas.visual import ScenePlan
@@ -23,21 +24,24 @@ class DemoVideoResponse(BaseModel):
     lesson_script: LessonScript = Field(
         description="Generated narration script for the lesson."
     )
-    visual_plan: ScenePlan = Field(
-        description="Generic visual scene plan used by the renderer."
+    visual_plan: ScenePlan | None = Field(
+        default=None,
+        description="Legacy slideshow scene plan; empty for animated runs.",
     )
     output_dir: str = Field(
         description="Directory containing generated artifacts for this demo run."
     )
     frame_paths: list[str] = Field(
-        description="Raw PNG frame paths rendered from the visual scene plan."
+        default_factory=list,
+        description="Legacy raw PNG frame paths; empty for animated runs.",
     )
     captioned_frame_paths: list[str] = Field(
-        description="PNG frame paths with narration captions overlaid."
+        default_factory=list,
+        description="Legacy captioned PNG frame paths; empty for animated runs.",
     )
     scene_durations: list[float] = Field(
         default_factory=list,
-        description="Final per-scene durations used for video timing.",
+        description="Final per-section durations used for video timing.",
     )
     audio_path: str | None = Field(
         default=None,
@@ -49,4 +53,8 @@ class DemoVideoResponse(BaseModel):
     )
     video_path: str = Field(
         description="MP4 video path generated from the rendered frames."
+    )
+    sections: list[SectionSummary] = Field(
+        default_factory=list,
+        description="How each section of the video was animated.",
     )

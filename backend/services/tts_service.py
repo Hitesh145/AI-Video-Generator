@@ -6,9 +6,6 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
-from rendering.caption_renderer import narration_for_scene
-from schemas.lesson import LessonScript
-from schemas.visual import ScenePlan, VisualScene
 from services.text_normalizer import estimate_speech_duration_seconds, normalize_text
 
 
@@ -23,14 +20,6 @@ class SceneAudio(BaseModel):
 
 
 class TTSSynthesizer(Protocol):
-    def synthesize_scene_audio(
-        self,
-        scene: VisualScene,
-        narration_text: str,
-        output_path: Path,
-    ) -> SceneAudio:
-        ...
-
     def synthesize_text(self, text: str, output_path: Path) -> SceneAudio:
         ...
 
@@ -104,16 +93,6 @@ class FakeTTSService:
     Deterministic TTS for tests. Writes silent WAV files with estimated duration.
     """
 
-    def synthesize_scene_audio(
-        self,
-        scene: VisualScene,
-        narration_text: str,
-        output_path: Path,
-    ) -> SceneAudio:
-        normalized = normalize_text(narration_text, fallback=scene.description)
-        audio = self.synthesize_text(normalized, output_path)
-        return audio.model_copy(update={"scene_id": scene.id})
-
     def synthesize_text(self, text: str, output_path: Path) -> SceneAudio:
         normalized = normalize_text(text)
         duration = estimate_speech_duration_seconds(normalized)
@@ -140,16 +119,6 @@ class EdgeTTSService:
 
     def __init__(self, voice: str = "en-US-JennyNeural") -> None:
         self.voice = voice
-
-    def synthesize_scene_audio(
-        self,
-        scene: VisualScene,
-        narration_text: str,
-        output_path: Path,
-    ) -> SceneAudio:
-        normalized = normalize_text(narration_text, fallback=scene.description)
-        audio = self.synthesize_text(normalized, output_path)
-        return audio.model_copy(update={"scene_id": scene.id})
 
     def synthesize_text(self, text: str, output_path: Path) -> SceneAudio:
         try:
@@ -192,68 +161,3 @@ def _measure_audio_duration_seconds(audio_path: Path) -> float:
             return _measure_audio_duration_seconds_fallback(audio_path)
 
     return _measure_audio_duration_seconds_fallback(audio_path)
-
-
-class SceneTTSService:
-    def __init__(self, synthesizer: TTSSynthesizer) -> None:
-        self.synthesizer = synthesizer
-
-    def synthesize_scene_plan(
-        self,
-        scene_plan: ScenePlan,
-        lesson_script: LessonScript,
-        output_dir: Path,
-    ) -> list[SceneAudio]:
-        audio_dir = output_dir / "audio"
-        audio_dir.mkdir(parents=True, exist_ok=True)
-
-        scene_audio: list[SceneAudio] = []
-        for index, scene in enumerate(scene_plan.scenes, start=1):
-            narration = narration_for_scene(scene, lesson_script)
-            audio_path = audio_dir / f"scene_{index:02d}.wav"
-            scene_audio.append(
-                self.synthesizer.synthesize_scene_audio(
-                    scene=scene,
-                    narration_text=narration,
-                    output_path=audio_path,
-                )
-            )
-
-        return scene_audio
-
-
-def concat_scene_audio(scene_audio: list[SceneAudio], output_path: Path) -> Path:
-    if not scene_audio:
-        raise ValueError("At least one scene audio track is required.")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    concat_path = output_path.parent / "audio.ffconcat"
-
-    lines = ["ffconcat version 1.0"]
-    for audio in scene_audio:
-        escaped_path = (
-            str(Path(audio.audio_path).resolve())
-            .replace("\\", "/")
-            .replace("'", "'\\''")
-        )
-        lines.append(f"file '{escaped_path}'")
-
-    concat_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    command = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_path),
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        str(output_path),
-    ]
-    subprocess.run(command, check=True)
-    return output_path

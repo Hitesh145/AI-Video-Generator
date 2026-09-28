@@ -1,16 +1,18 @@
+import json
+import re
 from pathlib import Path
 from typing import Callable, Protocol
 from uuid import uuid4
-import re
 
 from pydantic import BaseModel
 
+from animation.schemas import RenderSection, SectionClip, SectionSummary, build_render_sections
+from animation.timing import concat_audio_padded, concat_clips
 from rendering.subtitle_renderer import write_srt_file
+from rendering.video_renderer import mux_video
 from schemas.demo import DemoVideoResponse
 from schemas.knowledge import KnowledgeBase, KnowledgeGap
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, UserLessonRequest
-from schemas.visual import ScenePlan
-from services.tts_service import SceneAudio, SceneTTSService, concat_scene_audio
 
 
 class LessonAnalyzer(Protocol):
@@ -43,17 +45,18 @@ class ScriptWriter(Protocol):
         ...
 
 
-class VisualPlanner(Protocol):
-    def create_scene_plan(self, lesson_script: LessonScript) -> ScenePlan:
+class SectionAnimatorLike(Protocol):
+    def animate(
+        self,
+        sections: list[RenderSection],
+        output_dir: Path,
+    ) -> tuple[list[SectionClip], list[str]]:
         ...
 
 
-RenderFrames = Callable[[ScenePlan, Path], list[Path]]
-CaptionFrames = Callable[[list[Path], ScenePlan, LessonScript, Path], list[Path]]
-RenderVideo = Callable[
-    [list[Path], Path, list[float], int, int, int, Path | None, Path | None],
-    Path,
-]
+ConcatClips = Callable[[list[Path], Path], Path]
+BuildAudio = Callable[[list[Path], list[float], Path], Path]
+Mux = Callable[[Path, Path, Path | None, Path | None], Path]
 
 
 class DemoVideoService:
@@ -62,28 +65,24 @@ class DemoVideoService:
         lesson_analyzer_service: LessonAnalyzer,
         lesson_planner_service: LessonPlanner,
         script_writer_service: ScriptWriter,
-        visual_planner_service: VisualPlanner,
-        render_frames: RenderFrames,
-        caption_frames: CaptionFrames,
-        render_video: RenderVideo,
+        section_animator: SectionAnimatorLike,
         output_root: Path = Path("output"),
         knowledge_agent_service: KnowledgeAgent | None = None,
-        scene_tts_service: SceneTTSService | None = None,
-        enable_tts: bool = True,
         enable_subtitles: bool = True,
+        concat_clips: ConcatClips = concat_clips,
+        build_audio: BuildAudio = concat_audio_padded,
+        mux: Mux = mux_video,
     ) -> None:
         self.lesson_analyzer_service = lesson_analyzer_service
         self.lesson_planner_service = lesson_planner_service
         self.script_writer_service = script_writer_service
-        self.visual_planner_service = visual_planner_service
-        self.render_frames = render_frames
-        self.caption_frames = caption_frames
-        self.render_video = render_video
+        self.section_animator = section_animator
         self.output_root = output_root
         self.knowledge_agent_service = knowledge_agent_service
-        self.scene_tts_service = scene_tts_service
-        self.enable_tts = enable_tts
         self.enable_subtitles = enable_subtitles
+        self.concat_clips = concat_clips
+        self.build_audio = build_audio
+        self.mux = mux
 
     def generate_demo_video(
         self,
@@ -105,80 +104,59 @@ class DemoVideoService:
             lesson_request,
             lesson_plan,
         )
-        visual_plan = self.visual_planner_service.create_scene_plan(lesson_script)
+
+        sections = build_render_sections(lesson_script)
+        if not sections:
+            raise ValueError("Lesson script has no narration to render.")
 
         output_dir = self._create_output_dir(lesson_request.topic)
-        frame_paths = self.render_frames(visual_plan, output_dir)
-        if not frame_paths:
-            raise ValueError("Visual renderer did not produce any frames.")
+        clips, animation_warnings = self.section_animator.animate(sections, output_dir)
+        qc_warnings.extend(animation_warnings)
 
-        captioned_frame_paths = self.caption_frames(
-            frame_paths,
-            visual_plan,
-            lesson_script,
-            output_dir,
+        clip_durations = [sum(clip.segment_durations) for clip in clips]
+        video_only_path = self.concat_clips(
+            [Path(clip.video_path) for clip in clips],
+            output_dir / "lesson_video_only.mp4",
         )
-        if not captioned_frame_paths:
-            raise ValueError("Caption renderer did not produce any frames.")
+        audio_path = self.build_audio(
+            [Path(clip.audio_path) for clip in clips],
+            clip_durations,
+            output_dir / "narration.m4a",
+        )
 
-        scene_durations = [scene.duration_seconds for scene in visual_plan.scenes]
-        audio_path: Path | None = None
         subtitle_path: Path | None = None
-
-        if self.enable_tts and self.scene_tts_service is not None:
-            scene_audio = self.scene_tts_service.synthesize_scene_plan(
-                visual_plan,
-                lesson_script,
-                output_dir,
-            )
-            scene_durations = [audio.duration_seconds for audio in scene_audio]
-            audio_path = concat_scene_audio(
-                scene_audio,
-                output_dir / "narration.m4a",
-            )
-
-            if self.enable_subtitles:
-                subtitle_path = write_srt_file(
-                    [audio.narration_text for audio in scene_audio],
-                    scene_durations,
-                    output_dir / "subtitles.srt",
-                )
-        elif self.enable_subtitles:
-            from rendering.caption_renderer import narration_for_scene
-
+        if self.enable_subtitles:
             subtitle_path = write_srt_file(
-                [
-                    narration_for_scene(scene, lesson_script)
-                    for scene in visual_plan.scenes
-                ],
-                scene_durations,
+                [text for clip in clips for text in clip.narration_segments],
+                [duration for clip in clips for duration in clip.segment_durations],
                 output_dir / "subtitles.srt",
             )
 
-        frame_durations = self._frame_durations_for_visual_plan(
-            visual_plan,
-            captioned_frame_paths,
-            scene_durations,
-        )
-
-        video_path = self.render_video(
-            captioned_frame_paths,
+        video_path = self.mux(
+            video_only_path,
             output_dir / "lesson_demo.mp4",
-            frame_durations,
-            30,
-            854,
-            480,
             audio_path,
             subtitle_path,
         )
+
+        summaries = [
+            SectionSummary(
+                title=clip.title,
+                path_used=clip.path_used,
+                tracer=clip.tracer,
+                duration_seconds=duration,
+                warnings=clip.warnings,
+            )
+            for clip, duration in zip(clips, clip_durations)
+        ]
 
         self._write_json_artifacts(
             output_dir=output_dir,
             lesson_request=lesson_request,
             lesson_plan=lesson_plan,
             lesson_script=lesson_script,
-            visual_plan=visual_plan,
             knowledge_base=knowledge_base,
+            summaries=summaries,
         )
 
         return DemoVideoResponse(
@@ -187,14 +165,12 @@ class DemoVideoService:
             qc_warnings=qc_warnings,
             lesson_plan=lesson_plan,
             lesson_script=lesson_script,
-            visual_plan=visual_plan,
             output_dir=str(output_dir),
-            frame_paths=[str(path) for path in frame_paths],
-            captioned_frame_paths=[str(path) for path in captioned_frame_paths],
-            scene_durations=scene_durations,
-            audio_path=str(audio_path) if audio_path else None,
+            scene_durations=clip_durations,
+            audio_path=str(audio_path),
             subtitle_path=str(subtitle_path) if subtitle_path else None,
             video_path=str(video_path),
+            sections=summaries,
         )
 
     def _normalize_lesson_request_topic(
@@ -215,29 +191,6 @@ class DemoVideoService:
             return lesson_request
 
         return lesson_request
-
-    def _frame_durations_for_visual_plan(
-        self,
-        visual_plan: ScenePlan,
-        frame_paths: list[Path],
-        scene_durations: list[float],
-    ) -> list[float]:
-        if len(scene_durations) == len(frame_paths):
-            return scene_durations
-
-        if len(scene_durations) != len(visual_plan.scenes):
-            raise ValueError("Scene durations must match the number of scenes.")
-
-        frame_durations: list[float] = []
-        for scene, scene_duration in zip(visual_plan.scenes, scene_durations):
-            frame_count = 3 if scene.visual_type.lower() == "animation" else 1
-            per_frame = scene_duration / frame_count
-            frame_durations.extend([per_frame] * frame_count)
-
-        if len(frame_durations) != len(frame_paths):
-            raise ValueError("Expanded frame durations must match the number of rendered frames.")
-
-        return frame_durations
 
     def _build_qc_warnings(self, knowledge_base: KnowledgeBase) -> list[str]:
         warnings: list[str] = []
@@ -269,14 +222,13 @@ class DemoVideoService:
         lesson_request: LessonRequest,
         lesson_plan: LessonPlan,
         lesson_script: LessonScript,
-        visual_plan: ScenePlan,
         knowledge_base: KnowledgeBase | None,
+        summaries: list[SectionSummary],
     ) -> None:
         artifacts: list[tuple[str, BaseModel]] = [
             ("lesson_request.json", lesson_request),
             ("lesson_plan.json", lesson_plan),
             ("lesson_script.json", lesson_script),
-            ("visual_plan.json", visual_plan),
         ]
 
         if knowledge_base is not None:
@@ -287,3 +239,8 @@ class DemoVideoService:
                 artifact.model_dump_json(indent=2),
                 encoding="utf-8",
             )
+
+        (output_dir / "sections.json").write_text(
+            json.dumps([summary.model_dump() for summary in summaries], indent=2),
+            encoding="utf-8",
+        )

@@ -77,6 +77,18 @@ def render_video_from_frames(
     if audio_path is None and subtitle_path is None:
         return video_only_path
 
+    return mux_video(video_only_path, output_path, audio_path, subtitle_path)
+
+
+def mux_video(
+    video_path: Path,
+    output_path: Path,
+    audio_path: Path | None = None,
+    subtitle_path: Path | None = None,
+) -> Path:
+    """
+    Combine a video-only file with optional narration audio and a soft subtitle track.
+    """
     if audio_path is not None and not audio_path.exists():
         raise ValueError(f"Audio file not found: {audio_path}")
     if subtitle_path is not None and not subtitle_path.exists():
@@ -86,7 +98,7 @@ def render_video_from_frames(
         "ffmpeg",
         "-y",
         "-i",
-        str(video_only_path),
+        str(video_path),
     ]
     if audio_path is not None:
         mux_command.extend(["-i", str(audio_path)])

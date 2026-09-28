@@ -4,9 +4,13 @@ from fastapi.staticfiles import StaticFiles
 
 from pathlib import Path
 
-from rendering.caption_renderer import apply_script_captions
-from rendering.render_pipeline import render_scene_plan_frames
-from rendering.video_renderer import render_video_from_frames
+from animation.codegen.generator import CodegenRenderer
+from animation.narrator import StepNarrator
+from animation.router import AnimationRouter
+from animation.section_animator import SectionAnimator
+from animation.slideshow import SlideshowRenderer
+from animation.templates.render import ArrayTemplateRenderer
+from animation.tracers import default_registry
 from schemas.demo import DemoVideoResponse
 from schemas.lesson import (
     LessonPlan,
@@ -23,39 +27,17 @@ from services.knowledge_agent_service import KnowledgeAgentService
 from services.lesson_analyzer_service import LessonAnalyzerService
 from services.lesson_planner_service import LessonPlannerService
 from services.script_writer_service import ScriptWriterService
-from services.tts_service import EdgeTTSService, SceneTTSService, SilentTTSService
+from services.tts_service import EdgeTTSService, SilentTTSService
 from services.visual_planner_service import VisualPlannerService
 
 
-def render_demo_video(
-    frame_paths: list[Path],
-    output_path: Path,
-    durations: list[float],
-    fps: int,
-    width: int,
-    height: int,
-    audio_path: Path | None = None,
-    subtitle_path: Path | None = None,
-) -> Path:
-    return render_video_from_frames(
-        frame_paths=frame_paths,
-        output_path=output_path,
-        durations=durations,
-        fps=fps,
-        width=width,
-        height=height,
-        audio_path=audio_path,
-        subtitle_path=subtitle_path,
-    )
-
-
-def build_scene_tts_service() -> SceneTTSService:
+def build_tts_synthesizer() -> EdgeTTSService | SilentTTSService:
     try:
         import edge_tts  # noqa: F401
 
-        return SceneTTSService(EdgeTTSService())
+        return EdgeTTSService()
     except ImportError:
-        return SceneTTSService(SilentTTSService())
+        return SilentTTSService()
 
 
 app = FastAPI()
@@ -82,16 +64,23 @@ knowledge_agent_service = KnowledgeAgentService(llm_service)
 lesson_planner_service = LessonPlannerService(llm_service)
 script_writer_service = ScriptWriterService(llm_service)
 visual_planner_service = VisualPlannerService(llm_service)
+tracer_registry = default_registry()
+section_animator = SectionAnimator(
+    router=AnimationRouter(llm_service, tracer_registry),
+    narrator=StepNarrator(llm_service),
+    registry=tracer_registry,
+    synthesizer=build_tts_synthesizer(),
+    template_renderer=ArrayTemplateRenderer(),
+    codegen_renderer=CodegenRenderer(llm_service),
+    slideshow_renderer=SlideshowRenderer(),
+)
 demo_video_service = DemoVideoService(
     lesson_analyzer_service=lesson_analyzer_service,
     lesson_planner_service=lesson_planner_service,
     script_writer_service=script_writer_service,
-    visual_planner_service=visual_planner_service,
-    render_frames=render_scene_plan_frames,
-    caption_frames=apply_script_captions,
-    render_video=render_demo_video,
+    section_animator=section_animator,
+    output_root=output_root,
     knowledge_agent_service=knowledge_agent_service,
-    scene_tts_service=build_scene_tts_service(),
 )
 
 
