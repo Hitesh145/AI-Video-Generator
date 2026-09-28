@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 
 type GenerationStage = { label: string; detail: string };
+type SectionSummary = {
+    title: string;
+    path_used: "trace" | "codegen" | "slideshow";
+    tracer: string | null;
+    duration_seconds: number;
+    warnings: string[];
+};
 type VideoResponse = {
     lesson_request: { topic: string; audience: string; duration_minutes: number };
     lesson_plan: { title: string; learning_objectives: string[] };
@@ -8,6 +15,7 @@ type VideoResponse = {
     video_path: string;
     audio_path: string | null;
     subtitle_path: string | null;
+    sections: SectionSummary[];
 };
 type LibraryVideo = { id: string; title: string; filename: string; url: string; created_at: number; size_bytes: number };
 
@@ -15,8 +23,8 @@ const stages: GenerationStage[] = [
     { label: "Gathering resources", detail: "Grounding the lesson in useful concepts" },
     { label: "Building the lesson plan", detail: "Organizing the explanation for your audience" },
     { label: "Creating the script", detail: "Writing narration with a clear teaching flow" },
-    { label: "Designing scenes", detail: "Turning ideas into visual moments" },
-    { label: "Rendering motion", detail: "Drawing frames and applying captions" },
+    { label: "Choosing animations", detail: "Matching each section to an algorithm trace or a custom scene" },
+    { label: "Animating sections", detail: "Rendering motion with Manim" },
     { label: "Adding narration", detail: "Generating voice audio and timing the scenes" },
     { label: "Assembling the video", detail: "Combining motion, sound, and subtitles" },
 ];
@@ -24,6 +32,12 @@ const stages: GenerationStage[] = [
 const API_URL = "http://localhost:8000/lesson/generate-demo-video";
 const LIBRARY_URL = "http://localhost:8000/videos";
 const MEDIA_URL = "http://localhost:8000";
+
+function pathLabel(section: SectionSummary): string {
+    if (section.path_used === "trace") return `Algorithm trace · ${section.tracer ?? "unknown"}`;
+    if (section.path_used === "codegen") return "Custom animation";
+    return "Slideshow fallback";
+}
 
 function App() {
     const [request, setRequest] = useState("Explain binary search to a beginner.");
@@ -101,7 +115,7 @@ function App() {
                         <div className="stage-list">{stages.map((stage, index) => { const complete = activeStage > index; const current = isGenerating && activeStage === index; return <div className={`stage ${complete ? "complete" : ""} ${current ? "current" : ""}`} key={stage.label}><span className="stage-icon">{complete ? "✓" : current ? <span className="loader-dot" /> : String(index + 1).padStart(2, "0")}</span><div><strong>{stage.label}</strong><small>{stage.detail}</small></div>{current && <span className="stage-state">working</span>}</div>; })}</div>
                     </section>
                 </div>
-                {result && <section className="result-panel"><div><p className="panel-kicker">Export complete</p><h2>{result.lesson_plan.title}</h2><p>{result.lesson_request.audience} lesson · {result.scene_durations.length} scenes · narrated video with subtitles</p></div><div className="result-badge">MP4 ready <span>✓</span></div></section>}
+                {result && <section className="result-panel"><div><p className="panel-kicker">Export complete</p><h2>{result.lesson_plan.title}</h2><p>{result.lesson_request.audience} lesson · {result.sections.length} sections · narrated video with subtitles</p>{result.sections.length > 0 && <ul className="section-list">{result.sections.map((section, index) => <li key={`${index}-${section.title}`}><span className="section-title">{section.title}</span><span className={`path-badge path-${section.path_used}`}>{pathLabel(section)}</span></li>)}</ul>}</div><div className="result-badge">MP4 ready <span>✓</span></div></section>}
                 <section className="library-section">
                     <div className="library-heading"><div><p className="eyebrow">Your archive</p><h2>Previous videos</h2></div><span>{library.length} {library.length === 1 ? "video" : "videos"}</span></div>
                     {library.length === 0 ? <p className="empty-library">Generated lessons will appear here for replay. </p> : <div className="library-grid">{library.map((video) => <article className="video-card" key={video.id}><video controls preload="metadata" src={`${MEDIA_URL}${video.url}`} /><div className="video-card-info"><h3>{video.title}</h3><p>{video.filename}</p></div></article>)}</div>}
