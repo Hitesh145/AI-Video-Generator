@@ -1,8 +1,11 @@
 import math
 import re
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import BaseModel, Field
+
+from animation.schemas import RenderSection
 
 
 MAX_BEATS = 8
@@ -97,3 +100,61 @@ def fallback_beats(sentences: list[str], min_words: int = FALLBACK_BEAT_WORDS) -
             groups.append(current)
 
     return [PlannedBeat(text=" ".join(group), visual=FALLBACK_VISUAL) for group in groups]
+
+
+class StructuredGenerator(Protocol):
+    def generate_structured(self, prompt: str, response_schema: type[BaseModel]) -> BaseModel:
+        ...
+
+
+class Storyboarder:
+    def __init__(self, llm: StructuredGenerator, max_attempts: int = 2) -> None:
+        self.llm = llm
+        self.max_attempts = max_attempts
+
+    def plan(self, section: RenderSection) -> tuple[list[PlannedBeat], list[str]]:
+        sentences = split_sentences(section.narration) or [section.title]
+        error: str | None = None
+
+        for _ in range(self.max_attempts):
+            prompt = self._build_prompt(section, sentences, error)
+            try:
+                result = self.llm.generate_structured(prompt, Storyboard)
+                storyboard = Storyboard.model_validate(result.model_dump())
+                beats = beats_from_storyboard(sentences, storyboard)
+            except Exception as exc:
+                error = str(exc)
+                continue
+            return merge_short_beats(beats), []
+
+        warning = f"Section '{section.title}': storyboard failed ({error}); using plain narration beats."
+        return fallback_beats(sentences), [warning]
+
+    def _build_prompt(self, section: RenderSection, sentences: list[str], error: str | None) -> str:
+        numbered = "\n".join(f"{number}. {sentence}" for number, sentence in enumerate(sentences, start=1))
+        rejected = ""
+        if error is not None:
+            rejected = f"\nYour previous plan was rejected: {error}\nFix it and return a corrected plan.\n"
+
+        return f"""
+You are planning the visuals for one section of an educational video.
+
+Section title: {section.title}
+
+The narration is split into {len(sentences)} numbered sentences:
+{numbered}
+
+Group the sentences, in order, into between 1 and {MAX_BEATS} beats. For each beat give
+sentence_count (how many consecutive sentences it covers) and visual (what is on screen
+while those sentences are spoken). The sentence_count values must add up to exactly {len(sentences)}.
+
+Rules:
+1. Group sentences that explain one showable idea. Each beat should cover at least about 15 words.
+2. A visual may only depict what its sentences actually state. Do not invent numbers,
+   examples or steps that the narration does not mention. If the narration is abstract,
+   describe an abstract diagram, not a worked example.
+3. Keep objects and layout consistent from one beat to the next (the same box stays the same box).
+4. Text on screen is short labels only, never the narration itself.
+5. Describe shapes, arrows, diagrams and motion in one or two plain sentences per beat.
+{rejected}
+"""

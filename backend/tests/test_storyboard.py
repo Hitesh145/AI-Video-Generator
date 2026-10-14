@@ -1,15 +1,18 @@
 import pytest
 
+from animation.schemas import RenderSection
 from animation.storyboard import (
     FALLBACK_VISUAL,
     Beat,
     PlannedBeat,
     Storyboard,
+    Storyboarder,
     beats_from_storyboard,
     fallback_beats,
     merge_short_beats,
     split_sentences,
 )
+from fakes import FakeLLM
 
 
 def test_split_sentences_basic():
@@ -128,3 +131,95 @@ def test_fallback_never_exceeds_eight_beats():
 
 def test_fallback_of_nothing_is_empty():
     assert fallback_beats([]) == []
+
+
+S1 = "Binary search looks at the middle of a sorted list first."
+S2 = "If the middle is too big it throws away the right half."
+S3 = "Then it repeats the same trick on what is left over."
+NARRATION = f"{S1} {S2} {S3}"
+SECTION = RenderSection(index=1, title="How it works", narration=NARRATION)
+
+
+def reply(*pairs):
+    return {"beats": [{"sentence_count": n, "visual": v} for n, v in pairs]}
+
+
+def test_storyboarder_maps_a_valid_plan_to_verbatim_text():
+    llm = FakeLLM([reply((1, "a sorted row of boxes"), (2, "the right half fades"))])
+
+    beats, warnings = Storyboarder(llm).plan(SECTION)
+
+    assert beats == [
+        PlannedBeat(S1, "a sorted row of boxes"),
+        PlannedBeat(f"{S2} {S3}", "the right half fades"),
+    ]
+    assert warnings == []
+
+
+def test_storyboarder_prompt_numbers_the_sentences():
+    llm = FakeLLM([reply((3, "one picture"))])
+
+    Storyboarder(llm).plan(SECTION)
+
+    assert "How it works" in llm.prompts[0]
+    assert f"1. {S1}" in llm.prompts[0]
+    assert f"3. {S3}" in llm.prompts[0]
+
+
+def test_storyboarder_merges_short_beats():
+    section = RenderSection(index=0, title="T", narration=f"Short one. {S1} {S2}")
+    llm = FakeLLM([reply((1, "a"), (1, "b"), (1, "c"))])
+
+    beats, _ = Storyboarder(llm).plan(section)
+
+    assert [b.visual for b in beats] == ["a b", "c"]
+
+
+def test_storyboarder_retries_once_and_tells_the_llm_why():
+    llm = FakeLLM([reply((1, "a")), reply((3, "all of it"))])
+
+    beats, warnings = Storyboarder(llm).plan(SECTION)
+
+    assert [b.visual for b in beats] == ["all of it"]
+    assert warnings == []
+    assert "was rejected" in llm.prompts[1]
+    assert "add up to 1" in llm.prompts[1]
+    assert "was rejected" not in llm.prompts[0]
+
+
+def test_storyboarder_falls_back_after_two_bad_plans():
+    llm = FakeLLM([reply((1, "a")), reply((9, "b"))])
+
+    beats, warnings = Storyboarder(llm).plan(SECTION)
+
+    assert beats == fallback_beats([S1, S2, S3])
+    assert len(warnings) == 1
+    assert "How it works" in warnings[0] and "storyboard failed" in warnings[0]
+
+
+def test_storyboarder_falls_back_when_the_llm_errors():
+    llm = FakeLLM([RuntimeError("quota"), RuntimeError("quota")])
+
+    beats, warnings = Storyboarder(llm).plan(SECTION)
+
+    assert beats == fallback_beats([S1, S2, S3])
+    assert "quota" in warnings[0]
+
+
+def test_empty_narration_uses_the_title_as_the_only_sentence():
+    section = RenderSection(index=0, title="Introduction", narration="   ")
+    llm = FakeLLM([reply((1, "title card"))])
+
+    beats, warnings = Storyboarder(llm).plan(section)
+
+    assert beats == [PlannedBeat("Introduction", "title card")]
+    assert warnings == []
+
+
+def test_empty_narration_with_failing_llm_still_returns_a_beat():
+    section = RenderSection(index=0, title="Introduction", narration="")
+
+    beats, warnings = Storyboarder(FakeLLM([RuntimeError("x"), RuntimeError("x")])).plan(section)
+
+    assert [b.text for b in beats] == ["Introduction"]
+    assert len(warnings) == 1
