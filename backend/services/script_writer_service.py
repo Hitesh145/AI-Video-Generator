@@ -77,5 +77,12 @@ class ScriptWriterService:
             approximately {target_words} total words.
         13. Keep the narration concise enough to stay close to the requested
             duration.
-        14. Return only the structured result matching the provided schema.
+        14. Write short sentences, under about 22 words each, with one idea
+            per sentence. Never restate the previous sentence.
+        15. Prefer ideas that can be drawn as shapes, arrows or diagrams
+            over abstract statements, so each sentence can be shown on screen.
+        16. Whenever a step-by-step procedure is explained, walk through
+            ONE concrete example with specific values (for instance a short
+            list of real numbers) instead of only describing it in general.
+        17. Return only the structured result matching the provided schema.
         """
