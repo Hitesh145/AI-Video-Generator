@@ -1,9 +1,11 @@
 from pathlib import Path
 from typing import Callable, Protocol
 
+from animation.codegen.generator import CodegenResult
 from animation.narrator import NarratedSegment
 from animation.router import ResolvedRoute, RoutingResult
 from animation.schemas import PathUsed, RenderSection, SectionClip, TraceStep
+from animation.storyboard import PlannedBeat
 from animation.timing import concat_audio_padded, fit_clip, step_durations_for_segment
 from animation.tracers.base import TracerRegistry
 from services.tts_service import SceneAudio, SilentTTSService
@@ -33,8 +35,21 @@ class TemplateRenderer(Protocol):
         ...
 
 
+class BeatPlanner(Protocol):
+    def plan(self, section: RenderSection) -> tuple[list[PlannedBeat], list[str]]:
+        ...
+
+
 class CodegenSectionRenderer(Protocol):
-    def render(self, section: RenderSection, target_seconds: float, work_dir: Path, output_path: Path, artifacts_dir: Path) -> Path:
+    def render(
+        self,
+        section: RenderSection,
+        beats: list[PlannedBeat],
+        durations: list[float],
+        work_dir: Path,
+        output_path: Path,
+        artifacts_dir: Path,
+    ) -> CodegenResult:
         ...
 
 
@@ -52,6 +67,7 @@ class SectionAnimator:
         self,
         router: Router,
         narrator: Narrator,
+        storyboarder: BeatPlanner,
         registry: TracerRegistry,
         synthesizer: TextSynthesizer,
         template_renderer: TemplateRenderer,
@@ -62,6 +78,7 @@ class SectionAnimator:
     ) -> None:
         self.router = router
         self.narrator = narrator
+        self.storyboarder = storyboarder
         self.registry = registry
         self.synthesizer = synthesizer
         self.template_renderer = template_renderer
@@ -92,32 +109,60 @@ class SectionAnimator:
             except Exception as exc:
                 warnings.append(f"Section '{section.title}': trace animation failed ({exc}); using generated animation.")
 
-        audio = self._synthesize(section, section.narration, section_dir / "narration.wav", warnings)
-        duration = audio.duration_seconds
+        return self._codegen_section(section, section_dir, output_dir, warnings)
+
+    def _codegen_section(
+        self,
+        section: RenderSection,
+        section_dir: Path,
+        output_dir: Path,
+        warnings: list[str],
+    ) -> SectionClip:
+        beats, plan_warnings = self.storyboarder.plan(section)
+        warnings.extend(plan_warnings)
+
+        beat_paths: list[Path] = []
+        durations: list[float] = []
+        texts: list[str] = []
+        for number, beat in enumerate(beats):
+            audio = self._synthesize(
+                section,
+                beat.text,
+                section_dir / "audio" / f"beat_{number:03d}.wav",
+                warnings,
+            )
+            beat_paths.append(Path(audio.audio_path))
+            durations.append(audio.duration_seconds)
+            texts.append(audio.narration_text or beat.text)
+
+        total = sum(durations)
+        section_audio = self.build_audio(beat_paths, durations, section_dir / "narration.m4a")
         path_used: PathUsed = "codegen"
         clip_path = section_dir / "clip.mp4"
         try:
             # Fitting stays inside the try: a scene can "render" yet produce a
             # clip ffprobe cannot measure, and that must fall back, not crash.
-            raw = self.codegen_renderer.render(
+            result = self.codegen_renderer.render(
                 section,
-                duration,
+                beats,
+                durations,
                 section_dir / "codegen_work",
                 section_dir / "codegen_raw.mp4",
                 output_dir / "codegen",
             )
-            video = self.fit_clip(raw, duration, clip_path)
+            video = self.fit_clip(result.path, total, clip_path)
+            warnings.extend(result.warnings)
         except Exception as exc:
             warnings.append(f"Section '{section.title}': generated animation failed ({exc}); using slideshow.")
             path_used = "slideshow"
             try:
                 raw = self.slideshow_renderer.render(
                     section,
-                    duration,
+                    total,
                     section_dir / "slideshow_work",
                     section_dir / "slideshow_raw.mp4",
                 )
-                video = self.fit_clip(raw, duration, clip_path)
+                video = self.fit_clip(raw, total, clip_path)
             except Exception as slideshow_exc:
                 raise SectionRenderError(
                     f"Section '{section.title}' could not be rendered: {slideshow_exc}"
@@ -127,9 +172,9 @@ class SectionAnimator:
             section_index=section.index,
             title=section.title,
             video_path=str(video),
-            audio_path=audio.audio_path,
-            narration_segments=[audio.narration_text or section.narration],
-            segment_durations=[duration],
+            audio_path=str(section_audio),
+            narration_segments=texts,
+            segment_durations=durations,
             path_used=path_used,
             warnings=warnings,
         )

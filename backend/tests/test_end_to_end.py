@@ -1,10 +1,11 @@
 import pytest
 
-from animation.codegen.generator import EXAMPLES_DIR, CodegenRenderer
+from animation.codegen.generator import CodegenRenderer
 from animation.narrator import StepNarrator
 from animation.router import AnimationRouter
 from animation.section_animator import SectionAnimator
 from animation.slideshow import SlideshowRenderer
+from animation.storyboard import Storyboarder
 from animation.templates.render import ArrayTemplateRenderer
 from animation.timing import probe_duration
 from animation.tracers import default_registry
@@ -35,9 +36,22 @@ class Writer:
         )
 
 
+ONE_BEAT_SCENE = """
+from manim import *
+from kit import *
+
+
+class SectionScene(Scene):
+    def construct(self):
+        clock = BeatClock(self)
+        self.play(Write(title("Binary search")), run_time=0.3)
+        clock.end_beat()
+"""
+
+
 @pytest.mark.slow
 def test_full_lesson_renders_with_mixed_paths(tmp_path):
-    example = (EXAMPLES_DIR / "title_card.py").read_text(encoding="utf-8")
+    one_beat = {"beats": [{"sentence_count": 1, "visual": "a title card"}]}
     llm = FakeLLM([
         {"routes": [
             {"section_index": 0, "path": "codegen"},
@@ -45,15 +59,18 @@ def test_full_lesson_renders_with_mixed_paths(tmp_path):
              "values": [2, 5, 8, 12, 16, 23, 38], "target": 23},
             {"section_index": 2, "path": "codegen"},
         ]},
-        {"code": example},                                   # intro codegen
+        one_beat,                                            # intro storyboard
+        {"code": ONE_BEAT_SCENE},                            # intro codegen
         {"sentences": ["a", "b", "c", "d", "e"],             # binary search narration (5 steps)
          "group_with_previous": [False] * 5},
-        {"code": example},                                   # conclusion codegen
+        one_beat,                                            # conclusion storyboard
+        {"code": ONE_BEAT_SCENE},                            # conclusion codegen
     ])
     registry = default_registry()
     animator = SectionAnimator(
         router=AnimationRouter(llm, registry),
         narrator=StepNarrator(llm),
+        storyboarder=Storyboarder(llm),
         registry=registry,
         synthesizer=FakeTTSService(),
         template_renderer=ArrayTemplateRenderer(),

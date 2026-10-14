@@ -9,6 +9,7 @@ from animation.narrator import StepNarrator
 from animation.router import AnimationRouter
 from animation.section_animator import SectionAnimator
 from animation.slideshow import SlideshowRenderer
+from animation.storyboard import Storyboarder
 from animation.templates.render import ArrayTemplateRenderer
 from animation.tracers import default_registry
 from schemas.demo import DemoVideoResponse
@@ -68,6 +69,7 @@ tracer_registry = default_registry()
 section_animator = SectionAnimator(
     router=AnimationRouter(llm_service, tracer_registry),
     narrator=StepNarrator(llm_service),
+    storyboarder=Storyboarder(llm_service),
     registry=tracer_registry,
     synthesizer=build_tts_synthesizer(),
     template_renderer=ArrayTemplateRenderer(),
