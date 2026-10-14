@@ -1,4 +1,6 @@
+import json
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -6,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from animation.codegen.validator import validate_scene_code
 from animation.schemas import RenderSection
+from animation.storyboard import PlannedBeat
 from animation.templates.render import RenderError, render_manim_scene
 
 
@@ -13,8 +16,14 @@ KIT_FILE = Path(__file__).with_name("kit.py")
 EXAMPLES_DIR = Path(__file__).with_name("examples")
 MAX_ATTEMPTS = 3
 RENDER_TIMEOUT_SECONDS = 120
+MAX_OVERRUN_SECONDS = 1.0
 
-SceneRenderer = Callable[[Path, str, Path, Path], Path]
+# Must equal the constants in kit.py (a test pins this); the kit cannot be
+# imported here because it pulls Manim into the server process.
+BEAT_DURATIONS_ENV = "BEAT_DURATIONS"
+BEAT_REPORT_ENV = "BEAT_REPORT"
+
+SceneRenderer = Callable[[Path, str, Path, Path, dict[str, str]], Path]
 
 
 class StructuredGenerator(Protocol):
@@ -32,15 +41,71 @@ class CodegenFailed(RuntimeError):
         super().__init__("Generated animation failed: " + " | ".join(errors))
 
 
-def default_scene_renderer(scene_file: Path, scene_name: str, work_dir: Path, output_path: Path) -> Path:
+@dataclass(frozen=True)
+class CodegenResult:
+    path: Path
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class TimingCheck:
+    error: str | None
+    hard: bool
+    worst_overrun: float
+
+
+def default_scene_renderer(
+    scene_file: Path,
+    scene_name: str,
+    work_dir: Path,
+    output_path: Path,
+    extra_env: dict[str, str],
+) -> Path:
     return render_manim_scene(
         scene_file,
         scene_name,
         work_dir,
         output_path,
+        extra_env=extra_env,
         pythonpath=work_dir,
         timeout_seconds=RENDER_TIMEOUT_SECONDS,
     )
+
+
+def check_beat_report(report_path: Path, beat_count: int) -> TimingCheck:
+    if not report_path.exists():
+        return TimingCheck(
+            "The scene never called clock.end_beat(). Create `clock = BeatClock(self)` first and "
+            "call clock.end_beat() at the end of every beat.",
+            True,
+            0.0,
+        )
+    try:
+        rows = json.loads(report_path.read_text(encoding="utf-8"))
+        overruns = [float(row["overrun"]) for row in rows]
+    except Exception as exc:
+        return TimingCheck(f"The beat report could not be read ({exc}).", True, 0.0)
+
+    if len(overruns) != beat_count:
+        return TimingCheck(
+            f"The scene called clock.end_beat() {len(overruns)} times but there are {beat_count} beats. "
+            "Call it exactly once at the end of each beat.",
+            True,
+            0.0,
+        )
+
+    worst = max(overruns)
+    if worst > MAX_OVERRUN_SECONDS:
+        last = overruns.index(worst) + 1
+        first = next(i for i, overrun in enumerate(overruns) if overrun > 0) + 1
+        where = f"beat {last}" if first == last else f"beats {first}-{last}"
+        return TimingCheck(
+            f"Beat {last} ended {worst:.1f} s after its audio ended; the animations in {where} ran too long. "
+            "Shorten them so the animations of each beat take at most 85% of its duration.",
+            False,
+            worst,
+        )
+    return TimingCheck(None, False, worst)
 
 
 class CodegenRenderer:
@@ -57,19 +122,24 @@ class CodegenRenderer:
     def render(
         self,
         section: RenderSection,
-        target_seconds: float,
+        beats: list[PlannedBeat],
+        durations: list[float],
         work_dir: Path,
         output_path: Path,
         artifacts_dir: Path,
-    ) -> Path:
+    ) -> CodegenResult:
+        if not beats or len(beats) != len(durations):
+            raise ValueError("render needs at least one beat and exactly one duration per beat.")
+
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         errors: list[str] = []
         previous_code: str | None = None
         previous_error: str | None = None
+        best_late: tuple[float, Path, str] | None = None
 
         for attempt in range(1, self.max_attempts + 1):
             stem = artifacts_dir / f"section_{section.index}_attempt_{attempt}"
-            prompt = self._build_prompt(section, target_seconds, previous_code, previous_error)
+            prompt = self._build_prompt(section, beats, durations, previous_code, previous_error)
 
             try:
                 result = self.llm.generate_structured(prompt, GeneratedScene)
@@ -90,22 +160,40 @@ class CodegenRenderer:
                 shutil.copyfile(KIT_FILE, attempt_dir / "kit.py")
                 scene_file = attempt_dir / "section_scene.py"
                 scene_file.write_text(code, encoding="utf-8")
+                report_path = (attempt_dir / "beat_report.json").resolve()
+                report_path.unlink(missing_ok=True)
+                attempt_output = attempt_dir / "scene.mp4"
+                env = {BEAT_DURATIONS_ENV: json.dumps(durations), BEAT_REPORT_ENV: str(report_path)}
                 try:
-                    return self.scene_renderer(scene_file, "SectionScene", attempt_dir, output_path)
+                    self.scene_renderer(scene_file, "SectionScene", attempt_dir, attempt_output, env)
                 except RenderError as exc:
                     error = f"Render failed:\n{exc}"
+                else:
+                    check = check_beat_report(report_path, len(beats))
+                    if check.error is None:
+                        shutil.copyfile(attempt_output, output_path)
+                        return CodegenResult(output_path, [])
+                    error = check.error
+                    if not check.hard and (best_late is None or check.worst_overrun < best_late[0]):
+                        best_late = (check.worst_overrun, attempt_output, check.error)
 
             stem.with_suffix(".log").write_text(error, encoding="utf-8")
             errors.append(f"attempt {attempt}: {error.splitlines()[0]}")
             previous_code = code
             previous_error = error
 
+        if best_late is not None:
+            _, late_path, message = best_late
+            shutil.copyfile(late_path, output_path)
+            warning = f"Section '{section.title}': animation ran late against the narration ({message})"
+            return CodegenResult(output_path, [warning])
         raise CodegenFailed(errors)
 
     def _build_prompt(
         self,
         section: RenderSection,
-        target_seconds: float,
+        beats: list[PlannedBeat],
+        durations: list[float],
         previous_code: str | None,
         previous_error: str | None,
     ) -> str:
@@ -113,6 +201,11 @@ class CodegenRenderer:
             f"--- {path.name} ---\n{path.read_text(encoding='utf-8')}"
             for path in sorted(EXAMPLES_DIR.glob("*.py"))
         )
+        beat_lines = "\n\n".join(
+            f"Beat {number} ({duration:.1f} s)\nNarration: {beat.text}\nVisual: {beat.visual}"
+            for number, (beat, duration) in enumerate(zip(beats, durations), start=1)
+        )
+        count = len(beats)
         retry = ""
         if previous_code is not None and previous_error is not None:
             retry = f"""
@@ -129,14 +222,12 @@ Error:
 
         return f"""
 You are writing a Manim Community Edition scene for one section of an educational video.
+The narration is spoken in {count} beats. Each beat's visuals must be on screen while
+that beat's narration is spoken.
 
 Section title: {section.title}
 
-Narration spoken while the animation plays:
-{section.narration}
-
-Target duration: {target_seconds:.1f} seconds. Use run_time and self.wait(...) so the
-total runtime is close to this.
+{beat_lines}
 
 Start the file with:
 from manim import *
@@ -148,6 +239,7 @@ Style kit available from `kit`:
 - fit_in_frame(mobject) -> scales/shifts the mobject so it stays on screen and above the subtitle area
 - bullet_list(items) -> VGroup of bullet lines, already fitted
 - caption_safe_area() -> (ymin, ymax); keep everything between these y values, subtitles cover the bottom 15%
+- BeatClock(self) -> the beat clock; clock.end_beat() waits until the end of the current beat's audio
 
 Rules:
 1. Define exactly one class, `class SectionScene(Scene):`, with a `construct(self)` method. No other classes.
@@ -158,8 +250,18 @@ Rules:
 6. Visualise the idea with shapes, arrows, diagrams and motion. Keep on-screen text short;
    do not put the narration on screen.
 7. Return the complete file in the `code` field.
+8. Timing: the first line of construct must be `clock = BeatClock(self)`. Then write one block per
+   beat, in order, each starting with a `# beat N` comment and ending with `clock.end_beat()`.
+   Call clock.end_beat() exactly {count} times in total.
+9. Never use self.wait(...) to pad a beat. clock.end_beat() adds any waiting that is needed.
+10. The animations inside a beat must take at most 85% of that beat's duration in total
+    (add up the run_time values). A beat that runs longer than its audio makes the video late.
+11. Only show what the beat's narration states. Do not invent numbers, examples or steps.
+    If the narration is abstract, draw an abstract diagram.
+12. Keep objects consistent across beats: reuse and transform what is already on screen
+    instead of redrawing it.
 
-Examples of good scenes:
+Examples of good scenes (they use 3 beats of 2.5 s each):
 
 {examples}
 {retry}
