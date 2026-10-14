@@ -114,6 +114,7 @@ class BeatClock:
         actual = self.scene.renderer.time
         self.report.append({
             "beat": done + 1,
+            "start": round(self.start, 3),
             "expected_end": round(expected - self.start, 3),
             "actual_end": round(actual - self.start, 3),
             "overrun": round(max(0.0, actual - expected), 3),

@@ -17,6 +17,7 @@ EXAMPLES_DIR = Path(__file__).with_name("examples")
 MAX_ATTEMPTS = 3
 RENDER_TIMEOUT_SECONDS = 120
 MAX_OVERRUN_SECONDS = 1.0
+CLOCK_TOLERANCE_SECONDS = 0.05
 
 # Must equal the constants in kit.py (a test pins this); the kit cannot be
 # imported here because it pulls Manim into the server process.
@@ -72,7 +73,7 @@ def default_scene_renderer(
     )
 
 
-def check_beat_report(report_path: Path, beat_count: int) -> TimingCheck:
+def check_beat_report(report_path: Path, beat_count: int, durations: list[float] | None = None) -> TimingCheck:
     if not report_path.exists():
         return TimingCheck(
             "The scene never called clock.end_beat(). Create `clock = BeatClock(self)` first and "
@@ -93,6 +94,27 @@ def check_beat_report(report_path: Path, beat_count: int) -> TimingCheck:
             True,
             0.0,
         )
+
+    # The report is written by the scene's own clock, so verify the clock itself:
+    # it must have started with the scene and run on the real beat durations.
+    if any(float(row.get("start", 0.0)) > CLOCK_TOLERANCE_SECONDS for row in rows):
+        return TimingCheck(
+            "clock = BeatClock(self) was created after animations had already played. "
+            "It must be the first line of construct.",
+            True,
+            0.0,
+        )
+    if durations is not None:
+        total = 0.0
+        for number, (row, duration) in enumerate(zip(rows, durations), start=1):
+            total += duration
+            if abs(float(row["expected_end"]) - total) > CLOCK_TOLERANCE_SECONDS:
+                return TimingCheck(
+                    f"Beat {number} was timed with the scene's own durations. "
+                    "Use `BeatClock(self)` with no second argument so it reads the real beat durations.",
+                    True,
+                    0.0,
+                )
 
     worst = max(overruns)
     if worst > MAX_OVERRUN_SECONDS:
@@ -169,7 +191,7 @@ class CodegenRenderer:
                 except RenderError as exc:
                     error = f"Render failed:\n{exc}"
                 else:
-                    check = check_beat_report(report_path, len(beats))
+                    check = check_beat_report(report_path, len(beats), durations)
                     if check.error is None:
                         shutil.copyfile(attempt_output, output_path)
                         return CodegenResult(output_path, [])

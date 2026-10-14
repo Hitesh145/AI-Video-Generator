@@ -155,3 +155,13 @@ def test_real_manim_render_follows_the_beat_clock(tmp_path):
     rows = json.loads(report.read_text(encoding="utf-8"))
     assert [r["overrun"] for r in rows] == pytest.approx([0.0, 0.6, 0.0], abs=0.05)
     assert probe_duration(out) == pytest.approx(3.0, abs=0.15)
+
+
+def test_report_records_when_the_clock_was_started(monkeypatch):
+    monkeypatch.delenv(BEAT_REPORT_ENV, raising=False)
+    scene = FakeScene(start=2.0)
+    clock = BeatClock(scene, [1.0])
+
+    clock.end_beat()
+
+    assert clock.report[0]["start"] == pytest.approx(2.0)

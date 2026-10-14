@@ -32,9 +32,11 @@ GOOD_CODE = (EXAMPLES_DIR / "title_card.py").read_text(encoding="utf-8")
 
 
 def rows(*overruns):
+    # expected_end is the running total of DURATIONS, as the real BeatClock reports it
+    ends = [sum(DURATIONS[: i + 1]) if i < len(DURATIONS) else float(i + 1) for i in range(len(overruns))]
     return [
-        {"beat": i + 1, "expected_end": float(i + 1), "actual_end": float(i + 1) + o, "overrun": o}
-        for i, o in enumerate(overruns)
+        {"beat": i + 1, "start": 0.0, "expected_end": end, "actual_end": end + o, "overrun": o}
+        for i, (end, o) in enumerate(zip(ends, overruns))
     ]
 
 
@@ -241,3 +243,26 @@ def test_examples_render_for_real_on_the_beat_clock(tmp_path, example):
 
     assert result.warnings == []
     assert probe_duration(result.path) == pytest.approx(7.5, abs=0.2)
+
+
+def test_clock_created_after_animations_is_a_hard_failure(tmp_path):
+    late_start = [dict(row, start=2.0) for row in rows(0.0, 0.0)]
+    llm = FakeLLM([{"code": GOOD_CODE}] * 3)
+    renderer = RecordingRenderer(reports={1: late_start, 2: late_start, 3: late_start})
+
+    with pytest.raises(CodegenFailed):
+        run(llm, renderer, tmp_path)
+
+    assert "BeatClock(self)" in llm.prompts[1] and "first line" in llm.prompts[1]
+    assert not (tmp_path / "out.mp4").exists()
+
+
+def test_scene_that_uses_its_own_durations_is_a_hard_failure(tmp_path):
+    wrong = [dict(row, expected_end=row["expected_end"] + 1.0) for row in rows(0.0, 0.0)]
+    llm = FakeLLM([{"code": GOOD_CODE}] * 3)
+    renderer = RecordingRenderer(reports={1: wrong, 2: wrong, 3: wrong})
+
+    with pytest.raises(CodegenFailed):
+        run(llm, renderer, tmp_path)
+
+    assert "own durations" in llm.prompts[1]
