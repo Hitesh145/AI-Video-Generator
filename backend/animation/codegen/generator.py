@@ -18,6 +18,8 @@ MAX_ATTEMPTS = 3
 RENDER_TIMEOUT_SECONDS = 120
 MAX_OVERRUN_SECONDS = 1.0
 CLOCK_TOLERANCE_SECONDS = 0.05
+# Overruns below this are not worth pointing the LLM at.
+NOTICEABLE_OVERRUN_SECONDS = 0.25
 
 # Must equal the constants in kit.py (a test pins this); the kit cannot be
 # imported here because it pulls Manim into the server process.
@@ -119,7 +121,7 @@ def check_beat_report(report_path: Path, beat_count: int, durations: list[float]
     worst = max(overruns)
     if worst > MAX_OVERRUN_SECONDS:
         last = overruns.index(worst) + 1
-        first = next(i for i, overrun in enumerate(overruns) if overrun > 0) + 1
+        first = next(i for i, overrun in enumerate(overruns) if overrun > NOTICEABLE_OVERRUN_SECONDS) + 1
         where = f"beat {last}" if first == last else f"beats {first}-{last}"
         return TimingCheck(
             f"Beat {last} ended {worst:.1f} s after its audio ended; the animations in {where} ran too long. "
@@ -174,8 +176,10 @@ class CodegenRenderer:
 
             stem.with_suffix(".py").write_text(code, encoding="utf-8")
             problems = validate_scene_code(code)
+            summary = ""
             if problems:
                 error = "Code rejected by validator:\n" + "\n".join(problems)
+                summary = "Code rejected by validator: " + "; ".join(problems)
             else:
                 attempt_dir = work_dir / f"attempt_{attempt}"
                 attempt_dir.mkdir(parents=True, exist_ok=True)
@@ -200,7 +204,7 @@ class CodegenRenderer:
                         best_late = (check.worst_overrun, attempt_output, check.error)
 
             stem.with_suffix(".log").write_text(error, encoding="utf-8")
-            errors.append(f"attempt {attempt}: {error.splitlines()[0]}")
+            errors.append(f"attempt {attempt}: {summary or error.splitlines()[0]}")
             previous_code = code
             previous_error = error
 

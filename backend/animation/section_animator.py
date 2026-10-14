@@ -136,7 +136,10 @@ class SectionAnimator:
             texts.append(audio.narration_text or beat.text)
 
         total = sum(durations)
-        section_audio = self.build_audio(beat_paths, durations, section_dir / "narration.m4a")
+        try:
+            section_audio = self.build_audio(beat_paths, durations, section_dir / "narration.m4a")
+        except Exception as exc:
+            raise SectionRenderError(f"Section '{section.title}' audio could not be built: {exc}") from exc
         path_used: PathUsed = "codegen"
         clip_path = section_dir / "clip.mp4"
         try:

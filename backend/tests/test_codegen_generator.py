@@ -266,3 +266,22 @@ def test_scene_that_uses_its_own_durations_is_a_hard_failure(tmp_path):
         run(llm, renderer, tmp_path)
 
     assert "own durations" in llm.prompts[1]
+
+
+def test_tiny_early_overrun_does_not_blame_the_first_beat(tmp_path):
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(rows(0.01, 0.0, 3.0)), encoding="utf-8")
+
+    check = check_beat_report(path, 3)
+
+    assert "Beat 3 ended 3.0 s" in check.error
+    assert "beats 1" not in check.error
+
+
+def test_validator_problems_survive_into_the_final_error(tmp_path):
+    llm = FakeLLM([{"code": "import os\n" + GOOD_CODE}] * 3)
+
+    with pytest.raises(CodegenFailed) as info:
+        run(llm, RecordingRenderer(), tmp_path)
+
+    assert "import of 'os' is not allowed" in info.value.errors[0]

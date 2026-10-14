@@ -261,3 +261,15 @@ def test_one_failed_beat_becomes_silence_and_keeps_the_others(tmp_path):
     assert len(clip.narration_segments) == 2
     assert "narration audio failed" in clip.warnings[0]
     assert codegen.calls[0][2] == clip.segment_durations
+
+
+def test_audio_build_failure_in_a_codegen_section_is_a_section_error(tmp_path):
+    animator, _, _, _ = make([CODEGEN_ROUTE])
+
+    def broken(paths, durations, out):
+        raise RuntimeError("ffmpeg exploded")
+
+    animator.build_audio = broken
+
+    with pytest.raises(SectionRenderError, match="Why.*audio.*ffmpeg exploded"):
+        animator.animate([TEXT_SECTION], tmp_path)

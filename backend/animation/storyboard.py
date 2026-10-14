@@ -13,14 +13,36 @@ MIN_BEAT_WORDS = 8
 FALLBACK_BEAT_WORDS = 25
 FALLBACK_VISUAL = "Illustrate what the narration says."
 
-# Closing quotes and brackets stay attached to their sentence: the lookbehind
-# includes them instead of consuming them. Each alternative is fixed width.
+# A candidate break is sentence punctuation, any closing quotes or brackets that
+# belong to it, then whitespace. Candidates are then vetted by _is_real_break.
 _CLOSERS = "\"')’”"
-_SENTENCE_BREAK = re.compile(rf"(?<=[.!?])\s+|(?<=[.!?][{_CLOSERS}])\s+")
+_CANDIDATE_BREAK = re.compile(rf"[.!?]+[{_CLOSERS}]*\s+")
+_ENUMERATOR = re.compile(r"(?i)(step\s+)?\d+[.)]")
+
+
+def _is_real_break(sentence: str, following: str) -> bool:
+    # "Step 1." is a label for the sentence after it, not a sentence.
+    if _ENUMERATOR.fullmatch(sentence):
+        return False
+    # "Wait... what happens?" continues after an ellipsis.
+    if sentence.endswith(("...", "…")) and following[:1].islower():
+        return False
+    return True
 
 
 def split_sentences(text: str) -> list[str]:
-    return [part.strip() for part in _SENTENCE_BREAK.split(text.strip()) if part.strip()]
+    text = text.strip()
+    sentences: list[str] = []
+    start = 0
+    for match in _CANDIDATE_BREAK.finditer(text):
+        sentence = text[start:match.end()].strip()
+        if _is_real_break(sentence, text[match.end():]):
+            sentences.append(sentence)
+            start = match.end()
+    tail = text[start:].strip()
+    if tail:
+        sentences.append(tail)
+    return sentences
 
 
 class Beat(BaseModel):

@@ -223,3 +223,21 @@ def test_empty_narration_with_failing_llm_still_returns_a_beat():
 
     assert [b.text for b in beats] == ["Introduction"]
     assert len(warnings) == 1
+
+
+def test_split_sentences_does_not_split_ellipsis_before_lowercase():
+    assert split_sentences("Wait... what happens next? Good.") == ["Wait... what happens next?", "Good."]
+
+
+def test_split_sentences_splits_ellipsis_before_a_new_sentence():
+    assert split_sentences("Hmm... Then it stops.") == ["Hmm...", "Then it stops."]
+
+
+def test_split_sentences_keeps_step_numbers_with_their_sentence():
+    assert split_sentences("Step 1. Add water. Step 2. Stir.") == ["Step 1. Add water.", "Step 2. Stir."]
+
+
+def test_split_sentences_keeps_double_closing_quotes_attached():
+    text = "He said “she said ‘stop.’” Then left."
+
+    assert split_sentences(text) == ["He said “she said ‘stop.’”", "Then left."]
