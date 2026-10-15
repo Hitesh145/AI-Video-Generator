@@ -13,6 +13,7 @@ from rendering.video_renderer import mux_video
 from schemas.demo import DemoVideoResponse
 from schemas.knowledge import KnowledgeBase, KnowledgeGap
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, UserLessonRequest
+from services.run_context import bind_run_directory, llm_step, report_stage
 
 
 class LessonAnalyzer(Protocol):
@@ -88,31 +89,43 @@ class DemoVideoService:
         self,
         request: UserLessonRequest,
     ) -> DemoVideoResponse:
-        lesson_request = self.lesson_analyzer_service.analyze_lesson_request(request)
+        report_stage("analyze")
+        with llm_step("lesson analyzer"):
+            lesson_request = self.lesson_analyzer_service.analyze_lesson_request(request)
         lesson_request = self._normalize_lesson_request_topic(request, lesson_request)
 
         knowledge_base = None
         qc_warnings: list[str] = []
         if self.knowledge_agent_service is not None:
-            knowledge_base = self.knowledge_agent_service.create_knowledge_base(
-                lesson_request
-            )
+            report_stage("knowledge")
+            with llm_step("knowledge base"):
+                knowledge_base = self.knowledge_agent_service.create_knowledge_base(
+                    lesson_request
+                )
             qc_warnings = self._build_qc_warnings(knowledge_base)
+        else:
+            report_stage("knowledge", "skipped")
 
-        lesson_plan = self.lesson_planner_service.create_lesson_plan(lesson_request)
-        lesson_script = self.script_writer_service.create_lesson_script(
-            lesson_request,
-            lesson_plan,
-        )
+        report_stage("plan")
+        with llm_step("lesson planner"):
+            lesson_plan = self.lesson_planner_service.create_lesson_plan(lesson_request)
+        report_stage("script")
+        with llm_step("script writer"):
+            lesson_script = self.script_writer_service.create_lesson_script(
+                lesson_request,
+                lesson_plan,
+            )
 
         sections = build_render_sections(lesson_script)
         if not sections:
             raise ValueError("Lesson script has no narration to render.")
 
         output_dir = self._create_output_dir(lesson_request.topic)
+        bind_run_directory(output_dir)
         clips, animation_warnings = self.section_animator.animate(sections, output_dir)
         qc_warnings.extend(animation_warnings)
 
+        report_stage("assemble")
         clip_durations = [sum(clip.segment_durations) for clip in clips]
         video_only_path = self.concat_clips(
             [Path(clip.video_path) for clip in clips],
@@ -170,6 +183,7 @@ class DemoVideoService:
             audio_path=str(audio_path),
             subtitle_path=str(subtitle_path) if subtitle_path else None,
             video_path=str(video_path),
+            video_url=self._media_url(video_path),
             sections=summaries,
         )
 
@@ -206,6 +220,13 @@ class DemoVideoService:
 
     def _format_gap_warning(self, gap: KnowledgeGap) -> str:
         return f"Knowledge gap: {gap.question} ({gap.reason})"
+
+    def _media_url(self, video_path: Path) -> str | None:
+        try:
+            relative = Path(video_path).resolve().relative_to(self.output_root.resolve())
+        except ValueError:
+            return None
+        return "/media/" + relative.as_posix()
 
     def _create_output_dir(self, topic: str) -> Path:
         slug = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")

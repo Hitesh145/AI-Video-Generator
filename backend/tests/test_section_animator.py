@@ -7,9 +7,12 @@ from animation.narrator import NarratedSegment
 from animation.router import ResolvedRoute, RoutingResult
 from animation.schemas import RenderSection
 from animation.section_animator import SectionAnimator, SectionRenderError
-from animation.storyboard import PlannedBeat
+from animation.storyboard import PlannedBeat, Storyboard
 from animation.tracers import default_registry
 from animation.tracers.binary_search import BinarySearchInput
+from fakes import FakeLLM
+from services.llm_recorder import LLMCallRecorder, RecordingLLM
+from services.run_context import RunContext, run_scope
 from services.tts_service import SceneAudio
 
 
@@ -273,3 +276,51 @@ def test_audio_build_failure_in_a_codegen_section_is_a_section_error(tmp_path):
 
     with pytest.raises(SectionRenderError, match="Why.*audio.*ffmpeg exploded"):
         animator.animate([TEXT_SECTION], tmp_path)
+
+
+class SectionProgress:
+    def __init__(self):
+        self.stages = []
+        self.sections = []
+
+    def stage(self, key, detail=None):
+        self.stages.append(key)
+
+    def section(self, number, total, title, path, activity):
+        self.sections.append((number, total, title, path, activity))
+
+
+class LabelledStoryboarder(FakeStoryboarder):
+    """Storyboarder that makes a real recorded LLM call, so labels can be checked."""
+
+    def __init__(self, llm):
+        super().__init__()
+        self.llm = llm
+
+    def plan(self, section):
+        self.llm.generate_structured("storyboard prompt", Storyboard)
+        return super().plan(section)
+
+
+def test_codegen_section_reports_progress_and_labels_its_llm_calls(tmp_path):
+    progress, recorder = SectionProgress(), LLMCallRecorder("req")
+    llm = RecordingLLM(FakeLLM([{"beats": [{"sentence_count": 2, "visual": "v"}]}]))
+    animator, _, _, _ = make([CODEGEN_ROUTE], storyboarder=LabelledStoryboarder(llm))
+
+    with run_scope(RunContext(recorder, progress)):
+        animator.animate([TEXT_SECTION], tmp_path)
+
+    assert progress.stages == ["route"]
+    assert [s[:4] for s in progress.sections][0] == (1, 1, "Why", "codegen")
+    assert [s[4] for s in progress.sections] == ["starting", "planning beats", "narrating", "rendering scene"]
+    assert recorder.calls[0]["label"] == "section 1 · storyboard"
+
+
+def test_trace_section_reports_its_activities(tmp_path):
+    progress = SectionProgress()
+    animator, _, _, _ = make([TRACE_ROUTE])
+
+    with run_scope(RunContext(LLMCallRecorder("req"), progress)):
+        animator.animate([TRACE_SECTION], tmp_path)
+
+    assert [s[4] for s in progress.sections] == ["starting", "narrating steps", "animating algorithm trace"]

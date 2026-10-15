@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from animation.codegen.generator import CodegenRenderer
@@ -12,6 +15,8 @@ from animation.tracers import default_registry
 from fakes import FakeLLM
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, ScriptSection, UserLessonRequest
 from services.demo_video_service import DemoVideoService
+from services.llm_recorder import LLMCallRecorder, RecordingLLM
+from services.run_context import NullProgress, RunContext, run_scope
 from services.tts_service import FakeTTSService
 
 
@@ -52,7 +57,7 @@ class SectionScene(Scene):
 @pytest.mark.slow
 def test_full_lesson_renders_with_mixed_paths(tmp_path):
     one_beat = {"beats": [{"sentence_count": 1, "visual": "a title card"}]}
-    llm = FakeLLM([
+    fake_llm = FakeLLM([
         {"routes": [
             {"section_index": 0, "path": "codegen"},
             {"section_index": 1, "path": "trace", "tracer": "binary_search",
@@ -66,6 +71,7 @@ def test_full_lesson_renders_with_mixed_paths(tmp_path):
         one_beat,                                            # conclusion storyboard
         {"code": ONE_BEAT_SCENE},                            # conclusion codegen
     ])
+    llm = RecordingLLM(fake_llm)
     registry = default_registry()
     animator = SectionAnimator(
         router=AnimationRouter(llm, registry),
@@ -85,8 +91,25 @@ def test_full_lesson_renders_with_mixed_paths(tmp_path):
         output_root=tmp_path,
     )
 
-    response = service.generate_demo_video(UserLessonRequest(request="Explain binary search"))
+    recorder = LLMCallRecorder("Explain binary search")
+    with run_scope(RunContext(recorder, NullProgress())):
+        response = service.generate_demo_video(UserLessonRequest(request="Explain binary search"))
+    recorder.finish("completed")
 
     assert [s.path_used for s in response.sections] == ["codegen", "trace", "codegen"]
     assert response.qc_warnings == []
     assert probe_duration(response.video_path) == pytest.approx(sum(response.scene_durations), abs=0.5)
+
+    run_dir = Path(response.output_dir)
+    log = json.loads((run_dir / "llm_calls.json").read_text(encoding="utf-8"))
+    assert log["status"] == "completed"
+    assert [c["label"] for c in log["calls"]] == [
+        "router",
+        "section 1 · storyboard",
+        "section 1 · codegen",
+        "section 2 · narrator",
+        "section 3 · storyboard",
+        "section 3 · codegen",
+    ]
+    assert len(fake_llm.prompts) == 6
+    assert (run_dir / "llm_calls.md").exists()

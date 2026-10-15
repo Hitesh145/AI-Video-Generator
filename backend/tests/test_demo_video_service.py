@@ -1,8 +1,11 @@
+import json
 from pathlib import Path
 
 from animation.schemas import SectionClip
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, ScriptSection, UserLessonRequest
 from services.demo_video_service import DemoVideoService
+from services.llm_recorder import LLMCallRecorder
+from services.run_context import RunContext, run_scope
 
 
 class Analyzer:
@@ -83,3 +86,64 @@ def test_generates_video_from_section_clips(tmp_path):
     assert "Halve it." in srt and "extra" in srt
     assert (Path(response.output_dir) / "sections.json").exists()
     assert response.video_path.endswith("lesson_demo.mp4")
+
+
+class CapturingProgress:
+    def __init__(self):
+        self.stages = []
+
+    def stage(self, key, detail=None):
+        self.stages.append((key, detail))
+
+    def section(self, number, total, title, path, activity):
+        pass
+
+
+def _mux(video, out, audio, subtitles):
+    out.write_bytes(b"mp4")
+    return out
+
+
+def _service(tmp_path, animator=None):
+    return DemoVideoService(
+        lesson_analyzer_service=Analyzer(),
+        lesson_planner_service=Planner(),
+        script_writer_service=Writer(),
+        section_animator=animator or Animator(),
+        output_root=tmp_path,
+        concat_clips=lambda paths, out: out,
+        build_audio=lambda paths, durations, out: out,
+        mux=_mux,
+    )
+
+
+def test_reports_the_real_stages_in_order_and_binds_the_run_folder(tmp_path):
+    progress = CapturingProgress()
+    recorder = LLMCallRecorder("Explain binary search")
+
+    with run_scope(RunContext(recorder, progress)):
+        response = _service(tmp_path).generate_demo_video(UserLessonRequest(request="Explain binary search"))
+
+    assert progress.stages == [
+        ("analyze", None),
+        ("knowledge", "skipped"),
+        ("plan", None),
+        ("script", None),
+        ("assemble", None),
+    ]
+    assert recorder.directory == Path(response.output_dir)
+    assert (Path(response.output_dir) / "llm_calls.json").exists()
+
+
+def test_response_carries_a_media_url_relative_to_the_output_root(tmp_path):
+    response = _service(tmp_path).generate_demo_video(UserLessonRequest(request="Explain binary search"))
+
+    folder = Path(response.output_dir).name
+    assert response.video_url == f"/media/{folder}/lesson_demo.mp4"
+
+
+def test_service_still_works_without_a_run_context(tmp_path):
+    response = _service(tmp_path).generate_demo_video(UserLessonRequest(request="Explain binary search"))
+
+    assert response.video_path.endswith("lesson_demo.mp4")
+    assert not (Path(response.output_dir) / "llm_calls.json").exists()

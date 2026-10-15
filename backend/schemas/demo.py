@@ -54,6 +54,10 @@ class DemoVideoResponse(BaseModel):
     video_path: str = Field(
         description="MP4 video path generated from the rendered frames."
     )
+    video_url: str | None = Field(
+        default=None,
+        description="URL path under /media where the finished MP4 is served.",
+    )
     sections: list[SectionSummary] = Field(
         default_factory=list,
         description="How each section of the video was animated.",
