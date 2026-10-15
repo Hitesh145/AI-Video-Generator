@@ -8,6 +8,9 @@ from typing import Iterator
 
 logger = logging.getLogger(__name__)
 
+# (path, mtime, size) of files ffmpeg could not remux, so a listing does not retry them every time.
+_UNFIXABLE: set[tuple[str, int, int]] = set()
+
 
 def _top_level_boxes(path: Path) -> Iterator[str]:
     total = path.stat().st_size
@@ -43,6 +46,9 @@ def ensure_faststart(path: Path) -> bool:
         if is_faststart(path):
             return True
         original = path.stat()
+        key = (str(path), original.st_mtime_ns, original.st_size)
+        if key in _UNFIXABLE:
+            return False
         subprocess.run(
             ["ffmpeg", "-y", "-v", "error", "-i", str(path), "-c", "copy", "-movflags", "+faststart", str(temp)],
             check=True,
@@ -54,4 +60,9 @@ def ensure_faststart(path: Path) -> bool:
     except Exception as exc:
         logger.warning("Could not make %s fast-start: %s", path, exc)
         temp.unlink(missing_ok=True)
+        try:
+            stat = path.stat()
+            _UNFIXABLE.add((str(path), stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            pass
         return False

@@ -1,9 +1,10 @@
 import mimetypes
 import re
+from email.utils import formatdate
 from pathlib import Path
 from typing import Iterator
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 
@@ -58,8 +59,13 @@ def create_media_router(output_root: Path) -> APIRouter:
     router = APIRouter()
     root = Path(output_root).resolve()
 
-    @router.get("/media/{relative_path:path}")
-    def serve_media(relative_path: str, range_header: str | None = Header(default=None, alias="range")):
+    @router.api_route("/media/{relative_path:path}", methods=["GET", "HEAD"])
+    def serve_media(
+        request: Request,
+        relative_path: str,
+        download: bool = False,
+        range_header: str | None = Header(default=None, alias="range"),
+    ):
         target = (root / relative_path).resolve()
         try:
             target.relative_to(root)
@@ -68,7 +74,8 @@ def create_media_router(output_root: Path) -> APIRouter:
         if not target.is_file():
             raise HTTPException(status_code=404, detail="Not found")
 
-        size = target.stat().st_size
+        stat = target.stat()
+        size = stat.st_size
         media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if size == 0:
             return Response(content=b"", media_type=media_type, headers={"Accept-Ranges": "bytes"})
@@ -83,9 +90,17 @@ def create_media_router(output_root: Path) -> APIRouter:
         else:
             (start, end), status = byte_range, 206
 
-        headers = {"Accept-Ranges": "bytes", "Content-Length": str(end - start + 1)}
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(end - start + 1),
+            "Last-Modified": formatdate(stat.st_mtime, usegmt=True),
+        }
         if status == 206:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+        if download:
+            headers["Content-Disposition"] = f'attachment; filename="{target.name.replace(chr(34), "")}"'
+        if request.method == "HEAD":
+            return Response(status_code=status, media_type=media_type, headers=headers)
         return StreamingResponse(_iter_file(target, start, end), status_code=status, media_type=media_type, headers=headers)
 
     return router

@@ -79,3 +79,21 @@ def test_mux_video_writes_the_index_first(tmp_path):
     out = mux_video(clip, tmp_path / "out.mp4")
 
     assert is_faststart(out)
+
+
+def test_a_file_that_cannot_be_fixed_is_not_retried(tmp_path, monkeypatch):
+    import subprocess
+    from rendering import faststart
+
+    path = write(tmp_path, box(b"ftyp"), box(b"mdat", b"not really video"), box(b"moov"))
+    calls = []
+
+    def failing_run(*args, **kwargs):
+        calls.append(args)
+        raise subprocess.CalledProcessError(1, "ffmpeg")
+
+    monkeypatch.setattr(faststart.subprocess, "run", failing_run)
+
+    assert ensure_faststart(path) is False
+    assert ensure_faststart(path) is False
+    assert len(calls) == 1

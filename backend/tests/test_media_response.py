@@ -90,3 +90,36 @@ def test_empty_file_is_served_empty(client):
 ])
 def test_missing_files_directories_and_traversal_are_404(client, path):
     assert client.get(path).status_code == 404
+
+
+def test_head_returns_the_headers_without_a_body(client):
+    response = client.head(URL)
+
+    assert response.status_code == 200
+    assert response.content == b""
+    assert response.headers["content-length"] == "1024"
+    assert response.headers["accept-ranges"] == "bytes"
+    assert response.headers["content-type"] == "video/mp4"
+
+
+def test_head_honours_a_range(client):
+    response = client.head(URL, headers={"Range": "bytes=0-99"})
+
+    assert response.status_code == 206
+    assert response.headers["content-range"] == "bytes 0-99/1024"
+    assert response.content == b""
+
+
+def test_last_modified_is_sent_for_caching(client):
+    response = client.get(URL)
+
+    assert response.headers["last-modified"].endswith("GMT")
+
+
+def test_download_flag_asks_the_browser_to_save_the_file(client):
+    plain = client.get(URL)
+    download = client.get(URL + "?download=1")
+
+    assert "content-disposition" not in plain.headers
+    assert download.headers["content-disposition"] == 'attachment; filename="lesson_demo.mp4"'
+    assert download.content == DATA

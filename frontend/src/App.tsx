@@ -36,6 +36,12 @@ const LIBRARY_URL = `${API_BASE}/videos`;
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_FAILURES = 5;
 
+// When polling stops without a final answer, show the pipeline as stopped instead of still "working".
+function markStopped(job: JobStatus | null): JobStatus | null {
+    if (!job) return job;
+    return { ...job, status: "failed", stages: job.stages.map((stage) => (stage.state === "current" ? { ...stage, state: "failed" } : stage)) };
+}
+
 function pathLabel(section: SectionSummary): string {
     if (section.path_used === "trace") return `Algorithm trace · ${section.tracer ?? "unknown"}`;
     if (section.path_used === "codegen") return "Custom animation";
@@ -76,6 +82,14 @@ function App() {
         const poll = async () => {
             try {
                 const response = await fetch(`${JOBS_URL}/${jobId}`);
+                if (response.status === 404) {
+                    if (!cancelled) {
+                        setError("The server no longer knows this job (it may have restarted). Please generate again.");
+                        setJob(markStopped);
+                        setJobId(null);
+                    }
+                    return;
+                }
                 if (!response.ok) throw new Error(`Status ${response.status}`);
                 const status = (await response.json()) as JobStatus;
                 failures = 0;
@@ -92,6 +106,7 @@ function App() {
                 if (failures >= MAX_POLL_FAILURES) {
                     if (!cancelled) {
                         setError("Lost connection to the server.");
+                        setJob(markStopped);
                         setJobId(null);
                     }
                     return;
@@ -152,7 +167,7 @@ function App() {
                         )}
                     </section>
                 </div>
-                {result && <section className="result-panel"><div><p className="panel-kicker">Export complete</p><h2>{result.lesson_plan.title}</h2><p>{result.lesson_request.audience} lesson · {result.sections.length} sections · narrated video with subtitles</p>{result.sections.length > 0 && <ul className="section-list">{result.sections.map((section, index) => <li key={`${index}-${section.title}`}><span className="section-title">{section.title}</span><span className={`path-badge path-${section.path_used}`}>{pathLabel(section)}</span></li>)}</ul>}</div><div className="result-badge">MP4 ready <span>✓</span></div>{result.video_url && <><video className="result-video" controls preload="metadata" src={`${API_BASE}${result.video_url}`} /><a className="result-link" href={`${API_BASE}${result.video_url}`} download>Download MP4</a></>}</section>}
+                {result && <section className="result-panel"><div><p className="panel-kicker">Export complete</p><h2>{result.lesson_plan.title}</h2><p>{result.lesson_request.audience} lesson · {result.sections.length} sections · narrated video with subtitles</p>{result.sections.length > 0 && <ul className="section-list">{result.sections.map((section, index) => <li key={`${index}-${section.title}`}><span className="section-title">{section.title}</span><span className={`path-badge path-${section.path_used}`}>{pathLabel(section)}</span></li>)}</ul>}</div><div className="result-badge">MP4 ready <span>✓</span></div>{result.video_url && <><video className="result-video" controls preload="metadata" src={`${API_BASE}${result.video_url}`} /><a className="result-link" href={`${API_BASE}${result.video_url}?download=1`}>Download MP4</a></>}</section>}
                 <section className="library-section">
                     <div className="library-heading"><div><p className="eyebrow">Your archive</p><h2>Previous videos</h2></div><span>{library.length} {library.length === 1 ? "video" : "videos"}</span></div>
                     {library.length === 0 ? <p className="empty-library">Generated lessons will appear here for replay. </p> : <div className="library-grid">{library.map((video) => <article className="video-card" key={video.id}><video controls preload="metadata" src={`${API_BASE}${video.url}`} /><div className="video-card-info"><h3>{video.title}</h3><p>{video.filename}</p></div></article>)}</div>}

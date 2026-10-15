@@ -64,3 +64,15 @@ def test_listing_makes_old_videos_fast_start_without_changing_their_order(tmp_pa
 
     assert is_faststart(clip)
     assert videos[0]["created_at"] == 1_000_000_000_000_000_000
+
+
+def test_recently_written_videos_are_left_alone(tmp_path):
+    folder = tmp_path / "run"
+    folder.mkdir()
+    (folder / "lesson_demo.mp4").write_bytes(b"v")           # modified just now: a mux may still be writing it
+    seen = []
+
+    videos = list_videos(tmp_path, fix_video=lambda path: seen.append(path) or True)
+
+    assert seen == []
+    assert len(videos) == 1

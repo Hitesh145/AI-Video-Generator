@@ -1,7 +1,11 @@
+import time
 from pathlib import Path
 from typing import Callable
 
 from rendering.faststart import ensure_faststart
+
+# A file touched this recently may still be written by a running mux; never rewrite it.
+MIN_AGE_SECONDS = 60
 
 
 def list_videos(
@@ -13,7 +17,8 @@ def list_videos(
         if not video_path.is_file():
             continue
 
-        fix_video(video_path)                 # old runs were written without +faststart
+        if time.time() - video_path.stat().st_mtime >= MIN_AGE_SECONDS:
+            fix_video(video_path)             # old runs were written without +faststart
         stat = video_path.stat()
         relative_path = video_path.relative_to(output_root).as_posix()
         parent_name = video_path.parent.name.replace("-", " ").replace("_", " ")
