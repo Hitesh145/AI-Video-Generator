@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from pathlib import Path
 
@@ -26,6 +25,8 @@ from services.job_service import JobService
 from services.jobs_router import create_jobs_router
 from services.llm_recorder import RecordingLLM
 from services.llm_service import LLMService
+from services.media_response import create_media_router
+from services.video_library import list_videos
 from services.demo_video_service import DemoVideoService
 from services.knowledge_agent_service import KnowledgeAgentService
 from services.lesson_analyzer_service import LessonAnalyzerService
@@ -60,7 +61,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-app.mount("/media", StaticFiles(directory=output_root), name="generated-media")
+app.include_router(create_media_router(output_root))
 
 llm_service = RecordingLLM(LLMService())
 lesson_analyzer_service = LessonAnalyzerService(llm_service)
@@ -98,26 +99,7 @@ def root():
 
 @app.get("/videos")
 def list_generated_videos() -> list[dict[str, str | int]]:
-    videos: list[dict[str, str | int]] = []
-    for video_path in output_root.rglob("*.mp4"):
-        if not video_path.is_file() or video_path.name != "lesson_demo.mp4":
-            continue
-
-        relative_path = video_path.relative_to(output_root).as_posix()
-        parent_name = video_path.parent.name.replace("-", " ").replace("_", " ")
-        title = parent_name.title() if parent_name else video_path.stem.replace("_", " ").title()
-        videos.append(
-            {
-                "id": relative_path,
-                "title": title,
-                "filename": video_path.name,
-                "url": f"/media/{relative_path}",
-                "created_at": video_path.stat().st_mtime_ns,
-                "size_bytes": video_path.stat().st_size,
-            }
-        )
-
-    return sorted(videos, key=lambda video: int(video["created_at"]), reverse=True)
+    return list_videos(output_root)
 
 
 @app.post("/lesson/analyze", response_model=LessonRequest)

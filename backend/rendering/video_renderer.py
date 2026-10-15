@@ -120,7 +120,7 @@ def mux_video(
                 "language=eng",
             ]
         )
-    mux_command.extend(["-c:v", "copy", "-shortest", str(output_path)])
+    mux_command.extend(["-c:v", "copy", "-shortest", "-movflags", "+faststart", str(output_path)])
 
     subprocess.run(
         mux_command,
