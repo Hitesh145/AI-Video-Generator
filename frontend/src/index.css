@@ -55,3 +55,10 @@ button, textarea { font: inherit; }
     background: #fef3c7;
     color: #92400e;
 }
+.stage.failed .stage-icon { border-color: #ee927b; color: #ee927b; }
+.stage.failed strong { color: #ee927b; }
+.stage-hint { margin: 29px 0 0; color: #5f685a; font-size: 12px; line-height: 1.6; }
+.result-panel { flex-wrap: wrap; }
+.result-video { display: block; flex-basis: 100%; width: 100%; aspect-ratio: 16 / 9; background: #090a08; border: 1px solid #353c31; }
+.result-link { color: #b5d85d; font: 11px "DM Mono", monospace; text-decoration: none; }
+.result-link:hover { text-decoration: underline; }
