@@ -22,6 +22,9 @@ from schemas.lesson import (
 )
 from schemas.knowledge import KnowledgeBase
 from schemas.visual import ScenePlan
+from services.job_service import JobService
+from services.jobs_router import create_jobs_router
+from services.llm_recorder import RecordingLLM
 from services.llm_service import LLMService
 from services.demo_video_service import DemoVideoService
 from services.knowledge_agent_service import KnowledgeAgentService
@@ -59,7 +62,7 @@ app.add_middleware(
 )
 app.mount("/media", StaticFiles(directory=output_root), name="generated-media")
 
-llm_service = LLMService()
+llm_service = RecordingLLM(LLMService())
 lesson_analyzer_service = LessonAnalyzerService(llm_service)
 knowledge_agent_service = KnowledgeAgentService(llm_service)
 lesson_planner_service = LessonPlannerService(llm_service)
@@ -84,6 +87,8 @@ demo_video_service = DemoVideoService(
     output_root=output_root,
     knowledge_agent_service=knowledge_agent_service,
 )
+job_service = JobService(demo_video_service.generate_demo_video, output_root)
+app.include_router(create_jobs_router(job_service))
 
 
 @app.get("/")
@@ -145,4 +150,4 @@ def create_visual_plan(script: LessonScript) -> ScenePlan:
 
 @app.post("/lesson/generate-demo-video", response_model=DemoVideoResponse)
 def generate_demo_video(request: UserLessonRequest) -> DemoVideoResponse:
-    return demo_video_service.generate_demo_video(request)
+    return job_service.run_blocking(request)
