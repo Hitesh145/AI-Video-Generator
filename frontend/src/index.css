@@ -62,3 +62,16 @@ button, textarea { font: inherit; }
 .result-video { display: block; flex-basis: 100%; width: 100%; aspect-ratio: 16 / 9; background: #090a08; border: 1px solid #353c31; }
 .result-link { color: #b5d85d; font: 11px "DM Mono", monospace; text-decoration: none; }
 .result-link:hover { text-decoration: underline; }
+.topbar-right { display: flex; align-items: center; gap: 24px; }
+.account { display: flex; align-items: center; gap: 14px; }
+.account-email { color: #b8c0ac; text-transform: none; letter-spacing: 0; }
+.logout-button, .link-button { padding: 7px 11px; border: 1px solid #414a3c; color: #dce1ce; background: transparent; cursor: pointer; font: 11px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; }
+.logout-button:hover, .link-button:hover { border-color: #b5d85d; color: #b5d85d; }
+.link-button { border: 0; padding: 0; margin-top: 18px; text-transform: none; letter-spacing: 0; text-decoration: underline; }
+.login-card { display: flex; flex-direction: column; gap: 16px; max-width: 420px; margin: 40px auto 0; padding: 30px; border: 1px solid #353c31; background: #191c17; }
+.login-card h2 { margin: 0 0 6px; font-size: 22px; font-weight: 500; }
+.login-card label { display: flex; flex-direction: column; gap: 8px; color: #899080; font: 11px "DM Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
+.login-card input { padding: 12px 14px; border: 1px solid #414a3c; outline: 0; color: #e9eee0; background: #111310; font: 15px "Space Grotesk", sans-serif; letter-spacing: 0; text-transform: none; }
+.login-card input:focus { border-color: #b5d85d; }
+.login-card .hint { margin: 0; color: #6f7866; font: 11px "DM Mono", monospace; }
+.auth-loading { padding: 90px 5vw; color: #899080; font: 12px "DM Mono", monospace; }

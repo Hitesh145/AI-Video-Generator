@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { API_BASE, apiFetch, type AuthUser } from "./api";
 
 type StageState = "pending" | "current" | "done" | "failed";
 type JobStage = { key: string; label: string; state: StageState; detail: string | null };
@@ -30,9 +31,8 @@ type JobStatus = {
 };
 type LibraryVideo = { id: string; title: string; filename: string; url: string; created_at: number; size_bytes: number };
 
-const API_BASE = "http://localhost:8000";
-const JOBS_URL = `${API_BASE}/lesson/jobs`;
-const LIBRARY_URL = `${API_BASE}/videos`;
+const JOBS_PATH = "/lesson/jobs";
+const LIBRARY_PATH = "/videos";
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_FAILURES = 5;
 
@@ -48,7 +48,7 @@ function pathLabel(section: SectionSummary): string {
     return "Slideshow fallback";
 }
 
-function App() {
+function App({ user, onLogout }: { user: AuthUser; onLogout: () => Promise<void> }) {
     const [request, setRequest] = useState("Explain binary search to a beginner.");
     const [jobId, setJobId] = useState<string | null>(null);
     const [job, setJob] = useState<JobStatus | null>(null);
@@ -61,7 +61,7 @@ function App() {
 
     const loadLibrary = useCallback(async () => {
         try {
-            const response = await fetch(LIBRARY_URL);
+            const response = await apiFetch(LIBRARY_PATH);
             if (response.ok) setLibrary((await response.json()) as LibraryVideo[]);
         } catch {
             // The generation studio remains usable while the library is unavailable.
@@ -81,7 +81,7 @@ function App() {
 
         const poll = async () => {
             try {
-                const response = await fetch(`${JOBS_URL}/${jobId}`);
+                const response = await apiFetch(`${JOBS_PATH}/${jobId}`);
                 if (response.status === 404) {
                     if (!cancelled) {
                         setError("The server no longer knows this job (it may have restarted). Please generate again.");
@@ -128,7 +128,7 @@ function App() {
         setJob(null);
         setError("");
         try {
-            const response = await fetch(JOBS_URL, {
+            const response = await apiFetch(JOBS_PATH, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ request: request.trim() }),
@@ -148,7 +148,7 @@ function App() {
 
     return (
         <main className="app-shell">
-            <header className="topbar"><div className="brand-mark"><span>EDU</span><strong>GEN</strong></div><div className="topbar-status"><span className="status-dot" /> Video studio <span className="slash">/</span> beta</div></header>
+            <header className="topbar"><div className="brand-mark"><span>EDU</span><strong>GEN</strong></div><div className="topbar-right"><div className="topbar-status"><span className="status-dot" /> Video studio <span className="slash">/</span> beta</div><div className="account"><span className="account-email">{user.email}</span><button className="logout-button" onClick={() => void onLogout()}>Log out</button></div></div></header>
             <section className="workspace">
                 <div className="intro"><p className="eyebrow">Motion lesson studio</p><h1>Turn a question into a <em>visual explanation.</em></h1><p className="intro-copy">Describe what you want to teach. EduGen will plan the lesson, choreograph the scenes, and assemble a narrated video.</p></div>
                 <div className="studio-grid">
