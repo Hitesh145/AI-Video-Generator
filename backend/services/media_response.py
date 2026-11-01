@@ -2,7 +2,7 @@ import mimetypes
 import re
 from email.utils import formatdate
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
@@ -55,7 +55,10 @@ def _iter_file(path: Path, start: int, end: int) -> Iterator[bytes]:
             yield chunk
 
 
-def create_media_router(output_root: Path) -> APIRouter:
+def create_media_router(
+    output_root: Path,
+    authorize: Callable[[Request, str], bool] | None = None,
+) -> APIRouter:
     router = APIRouter()
     root = Path(output_root).resolve()
 
@@ -66,6 +69,9 @@ def create_media_router(output_root: Path) -> APIRouter:
         download: bool = False,
         range_header: str | None = Header(default=None, alias="range"),
     ):
+        # Checked before touching the filesystem, so a denied file looks exactly like a missing one.
+        if authorize is not None and not authorize(request, relative_path):
+            raise HTTPException(status_code=404, detail="Not found")
         target = (root / relative_path).resolve()
         try:
             target.relative_to(root)

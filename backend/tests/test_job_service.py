@@ -2,10 +2,11 @@ import json
 import threading
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
+from accounts.service import UserInfo
 from fakes import FakeLLM
 from schemas.demo import DemoVideoResponse
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, ScriptSection, UserLessonRequest
@@ -31,12 +32,13 @@ def make_response(output_dir="out"):
 
 
 REQUEST = UserLessonRequest(request="Explain binary search")
+USER = "user-1"
 
 
 def run_to_end(service, pipeline_request=REQUEST):
-    job_id = service.start(pipeline_request)
+    job_id = service.start(pipeline_request, USER)
     service.wait(job_id, timeout=10)
-    return service.get(job_id)
+    return service.get(job_id, USER)
 
 
 def test_completed_job_marks_every_stage_done(tmp_path):
@@ -71,10 +73,10 @@ def test_status_during_the_run_reflects_the_real_stage_and_section(tmp_path):
         return make_response()
 
     service = JobService(pipeline, tmp_path)
-    job_id = service.start(REQUEST)
+    job_id = service.start(REQUEST, USER)
     assert reached.wait(timeout=10)
 
-    status = service.get(job_id)
+    status = service.get(job_id, USER)
     states = {s.key: s.state for s in status.stages}
     assert status.status == "running"
     assert states == {
@@ -90,7 +92,7 @@ def test_status_during_the_run_reflects_the_real_stage_and_section(tmp_path):
 
     release.set()
     service.wait(job_id, timeout=10)
-    assert service.get(job_id).status == "completed"
+    assert service.get(job_id, USER).status == "completed"
 
 
 def test_failure_marks_the_current_stage_failed_and_logs_before_the_run_folder_exists(tmp_path):
@@ -152,12 +154,12 @@ def test_two_jobs_at_once_do_not_mix_logs_or_progress(tmp_path):
         return make_response(tmp_path / name)
 
     service = JobService(pipeline, tmp_path)
-    job_a = service.start(UserLessonRequest(request="A"))
-    job_b = service.start(UserLessonRequest(request="B"))
+    job_a = service.start(UserLessonRequest(request="A"), USER)
+    job_b = service.start(UserLessonRequest(request="B"), USER)
     assert reached["A"].wait(timeout=10) and reached["B"].wait(timeout=10)
 
-    states_a = {s.key: s.state for s in service.get(job_a).stages}
-    states_b = {s.key: s.state for s in service.get(job_b).stages}
+    states_a = {s.key: s.state for s in service.get(job_a, USER).stages}
+    states_b = {s.key: s.state for s in service.get(job_b, USER).stages}
     assert states_a["analyze"] == "current" and states_a["plan"] == "pending"
     assert states_b["analyze"] == "done" and states_b["plan"] == "current"   # B's report closed its earlier stages only
 
@@ -174,7 +176,7 @@ def test_two_jobs_at_once_do_not_mix_logs_or_progress(tmp_path):
 
 
 def test_unknown_job_is_none(tmp_path):
-    assert JobService(lambda request: make_response(), tmp_path).get("nope") is None
+    assert JobService(lambda request: make_response(), tmp_path).get("nope", USER) is None
 
 
 def test_run_blocking_returns_the_result_and_writes_the_log(tmp_path):
@@ -184,7 +186,7 @@ def test_run_blocking_returns_the_result_and_writes_the_log(tmp_path):
         bind_run_directory(folder)
         return make_response(folder)
 
-    result = JobService(pipeline, tmp_path).run_blocking(REQUEST)
+    result = JobService(pipeline, tmp_path).run_blocking(REQUEST, USER)
 
     assert result.video_url == "/media/out/lesson_demo.mp4"
     assert json.loads((folder / "llm_calls.json").read_text(encoding="utf-8"))["status"] == "completed"
@@ -195,28 +197,93 @@ def test_run_blocking_reraises_and_logs_the_failure(tmp_path):
         raise RuntimeError("down")
 
     with pytest.raises(RuntimeError, match="down"):
-        JobService(pipeline, tmp_path).run_blocking(REQUEST)
+        JobService(pipeline, tmp_path).run_blocking(REQUEST, USER)
 
     logs = list((tmp_path / "_failed").glob("*/llm_calls.json"))
     assert json.loads(logs[0].read_text(encoding="utf-8"))["error"] == "RuntimeError: down"
 
 
+def stub_current_user(request: Request) -> UserInfo:
+    user_id = request.headers.get("x-user")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    return UserInfo(user_id, f"{user_id}@x.com")
+
+
+def jobs_client(service):
+    app = FastAPI()
+    app.include_router(create_jobs_router(service, stub_current_user))
+    return TestClient(app)
+
+
 def test_endpoints_create_and_poll_a_job(tmp_path):
     service = JobService(lambda request: make_response(), tmp_path)
-    app = FastAPI()
-    app.include_router(create_jobs_router(service))
-    client = TestClient(app)
+    client = jobs_client(service)
+    headers = {"x-user": USER}
 
-    created = client.post("/lesson/jobs", json={"request": "Explain binary search"})
+    created = client.post("/lesson/jobs", json={"request": "Explain binary search"}, headers=headers)
     assert created.status_code == 202
     job_id = created.json()["job_id"]
     service.wait(job_id, timeout=10)
 
-    polled = client.get(f"/lesson/jobs/{job_id}")
+    polled = client.get(f"/lesson/jobs/{job_id}", headers=headers)
     body = polled.json()
     assert polled.status_code == 200
     assert body["status"] == "completed"
     assert [s["key"] for s in body["stages"]] == [key for key, _ in STAGES]
     assert body["result"]["video_url"] == "/media/out/lesson_demo.mp4"
 
-    assert client.get("/lesson/jobs/unknown").status_code == 404
+    assert client.get("/lesson/jobs/unknown", headers=headers).status_code == 404
+
+
+def test_jobs_endpoints_need_login_and_hide_other_users_jobs(tmp_path):
+    service = JobService(lambda request: make_response(), tmp_path)
+    client = jobs_client(service)
+
+    assert client.post("/lesson/jobs", json={"request": "x"}).status_code == 401
+    assert client.get("/lesson/jobs/anything").status_code == 401
+
+    job_id = client.post("/lesson/jobs", json={"request": "x"}, headers={"x-user": "user-1"}).json()["job_id"]
+    service.wait(job_id, timeout=10)
+    assert client.get(f"/lesson/jobs/{job_id}", headers={"x-user": "user-2"}).status_code == 404
+    assert client.get(f"/lesson/jobs/{job_id}", headers={"x-user": "user-1"}).status_code == 200
+
+
+def test_another_users_job_is_invisible(tmp_path):
+    service = JobService(lambda request: make_response(), tmp_path)
+    job_id = service.start(REQUEST, "user-1")
+    service.wait(job_id, timeout=10)
+
+    assert service.get(job_id, "user-2") is None
+    assert service.get(job_id, "user-1").status == "completed"
+
+
+def test_on_complete_receives_the_owner_and_the_result_for_jobs_and_blocking_runs(tmp_path):
+    calls = []
+    service = JobService(
+        lambda request: make_response(),
+        tmp_path,
+        on_complete=lambda user_id, result: calls.append((user_id, result.video_url)),
+    )
+
+    run_to_end(service)
+    service.run_blocking(REQUEST, "user-2")
+
+    assert calls == [("user-1", "/media/out/lesson_demo.mp4"), ("user-2", "/media/out/lesson_demo.mp4")]
+
+
+def test_a_failing_on_complete_fails_the_job_and_the_log(tmp_path):
+    folder = tmp_path / "run1"
+
+    def pipeline(request):
+        bind_run_directory(folder)
+        return make_response(folder)
+
+    def broken(user_id, result):
+        raise RuntimeError("cannot record video")
+
+    status = run_to_end(JobService(pipeline, tmp_path, on_complete=broken))
+
+    assert status.status == "failed"
+    assert status.error.message == "RuntimeError: cannot record video"
+    assert json.loads((folder / "llm_calls.json").read_text(encoding="utf-8"))["status"] == "failed"

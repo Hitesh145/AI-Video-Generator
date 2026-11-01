@@ -11,10 +11,13 @@ MIN_AGE_SECONDS = 60
 def list_videos(
     output_root: Path,
     fix_video: Callable[[Path], bool] = ensure_faststart,
+    run_dirs: set[str] | None = None,
 ) -> list[dict[str, str | int]]:
     videos: list[dict[str, str | int]] = []
     for video_path in Path(output_root).rglob("lesson_demo.mp4"):
         if not video_path.is_file():
+            continue
+        if run_dirs is not None and video_path.parent.name not in run_dirs:
             continue
 
         if time.time() - video_path.stat().st_mtime >= MIN_AGE_SECONDS:

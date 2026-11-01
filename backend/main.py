@@ -1,8 +1,13 @@
-from fastapi import FastAPI
+import os
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from pathlib import Path
 
+from accounts.router import SESSION_COOKIE, create_auth_router, create_current_user_dependency
+from accounts.service import AccountService, UserInfo
+from accounts.videos import VideoRepository
 from animation.codegen.generator import CodegenRenderer
 from animation.narrator import StepNarrator
 from animation.router import AnimationRouter
@@ -11,6 +16,7 @@ from animation.slideshow import SlideshowRenderer
 from animation.storyboard import Storyboarder
 from animation.templates.render import ArrayTemplateRenderer
 from animation.tracers import default_registry
+from rag.database import build_session_factory
 from schemas.demo import DemoVideoResponse
 from schemas.lesson import (
     LessonPlan,
@@ -61,7 +67,28 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-app.include_router(create_media_router(output_root))
+
+session_factory = build_session_factory()
+account_service = AccountService(session_factory)
+video_repository = VideoRepository(session_factory)
+current_user = create_current_user_dependency(account_service)
+app.include_router(
+    create_auth_router(
+        account_service,
+        cookie_secure=os.getenv("AUTH_COOKIE_SECURE", "").lower() in ("1", "true"),
+    )
+)
+
+
+def authorize_media(request: Request, relative_path: str) -> bool:
+    """A media file is served only to the user who owns its run folder."""
+    user = account_service.user_for_token(request.cookies.get(SESSION_COOKIE, ""))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    return video_repository.owner_of_run(relative_path.split("/")[0]) == user.user_id
+
+
+app.include_router(create_media_router(output_root, authorize=authorize_media))
 
 llm_service = RecordingLLM(LLMService())
 lesson_analyzer_service = LessonAnalyzerService(llm_service)
@@ -88,8 +115,14 @@ demo_video_service = DemoVideoService(
     output_root=output_root,
     knowledge_agent_service=knowledge_agent_service,
 )
-job_service = JobService(demo_video_service.generate_demo_video, output_root)
-app.include_router(create_jobs_router(job_service))
+job_service = JobService(
+    demo_video_service.generate_demo_video,
+    output_root,
+    on_complete=lambda user_id, response: video_repository.record(
+        user_id, Path(response.output_dir).name, response.lesson_plan.title
+    ),
+)
+app.include_router(create_jobs_router(job_service, current_user))
 
 
 @app.get("/")
@@ -98,27 +131,28 @@ def root():
 
 
 @app.get("/videos")
-def list_generated_videos() -> list[dict[str, str | int]]:
-    return list_videos(output_root)
+def list_generated_videos(user: UserInfo = Depends(current_user)) -> list[dict[str, str | int]]:
+    run_dirs = {record.run_dir for record in video_repository.list_for_user(user.user_id)}
+    return list_videos(output_root, run_dirs=run_dirs)
 
 
 @app.post("/lesson/analyze", response_model=LessonRequest)
-def analyze_lesson(request: UserLessonRequest) -> LessonRequest:
+def analyze_lesson(request: UserLessonRequest, user: UserInfo = Depends(current_user)) -> LessonRequest:
     return lesson_analyzer_service.analyze_lesson_request(request)
 
 
 @app.post("/lesson/knowledge", response_model=KnowledgeBase)
-def create_knowledge_base(lesson_request: LessonRequest) -> KnowledgeBase:
+def create_knowledge_base(lesson_request: LessonRequest, user: UserInfo = Depends(current_user)) -> KnowledgeBase:
     return knowledge_agent_service.create_knowledge_base(lesson_request)
 
 
 @app.post("/lesson/plan", response_model=LessonPlan)
-def create_lesson_plan(lesson_request: LessonRequest) -> LessonPlan:
+def create_lesson_plan(lesson_request: LessonRequest, user: UserInfo = Depends(current_user)) -> LessonPlan:
     return lesson_planner_service.create_lesson_plan(lesson_request)
 
 
 @app.post("/lesson/script", response_model=LessonScript)
-def create_lesson_script(request: LessonScriptRequest) -> LessonScript:
+def create_lesson_script(request: LessonScriptRequest, user: UserInfo = Depends(current_user)) -> LessonScript:
     return script_writer_service.create_lesson_script(
         request.lesson_request,
         request.lesson_plan,
@@ -126,10 +160,10 @@ def create_lesson_script(request: LessonScriptRequest) -> LessonScript:
 
 
 @app.post("/lesson/visual-plan", response_model=ScenePlan)
-def create_visual_plan(script: LessonScript) -> ScenePlan:
+def create_visual_plan(script: LessonScript, user: UserInfo = Depends(current_user)) -> ScenePlan:
     return visual_planner_service.create_scene_plan(script)
 
 
 @app.post("/lesson/generate-demo-video", response_model=DemoVideoResponse)
-def generate_demo_video(request: UserLessonRequest) -> DemoVideoResponse:
-    return job_service.run_blocking(request)
+def generate_demo_video(request: UserLessonRequest, user: UserInfo = Depends(current_user)) -> DemoVideoResponse:
+    return job_service.run_blocking(request, user.user_id)

@@ -76,3 +76,13 @@ def test_recently_written_videos_are_left_alone(tmp_path):
 
     assert seen == []
     assert len(videos) == 1
+
+
+def test_run_dirs_limits_the_listing(tmp_path):
+    make_video(tmp_path, "a-1", 1_000_000_000)
+    make_video(tmp_path, "b-2", 2_000_000_000)
+
+    videos = list_videos(tmp_path, fix_video=lambda path: True, run_dirs={"a-1"})
+
+    assert [v["id"] for v in videos] == ["a-1/lesson_demo.mp4"]
+    assert list_videos(tmp_path, fix_video=lambda path: True, run_dirs=set()) == []

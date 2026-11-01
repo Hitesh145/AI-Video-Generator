@@ -123,3 +123,49 @@ def test_download_flag_asks_the_browser_to_save_the_file(client):
     assert "content-disposition" not in plain.headers
     assert download.headers["content-disposition"] == 'attachment; filename="lesson_demo.mp4"'
     assert download.content == DATA
+
+
+def make_authorized_client(tmp_path, authorize):
+    root = tmp_path / "output"
+    (root / "run").mkdir(parents=True)
+    (root / "run" / "lesson_demo.mp4").write_bytes(DATA)
+    app = FastAPI()
+    app.include_router(create_media_router(root, authorize=authorize))
+    return TestClient(app)
+
+
+def test_authorize_false_hides_an_existing_file_as_404(tmp_path):
+    client = make_authorized_client(tmp_path, lambda request, path: False)
+
+    denied = client.get("/media/run/lesson_demo.mp4")
+    missing = client.get("/media/run/missing.mp4")
+
+    assert denied.status_code == missing.status_code == 404
+    assert denied.json() == missing.json()
+
+
+def test_authorize_receives_the_request_and_relative_path_and_true_serves(tmp_path):
+    seen = []
+
+    def authorize(request, relative_path):
+        seen.append((request.url.path, relative_path))
+        return True
+
+    client = make_authorized_client(tmp_path, authorize)
+
+    response = client.get("/media/run/lesson_demo.mp4")
+
+    assert response.status_code == 200
+    assert seen == [("/media/run/lesson_demo.mp4", "run/lesson_demo.mp4")]
+
+
+def test_authorize_can_demand_login_with_401(tmp_path):
+    from fastapi import HTTPException
+
+    def authorize(request, relative_path):
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+    client = make_authorized_client(tmp_path, authorize)
+
+    assert client.get("/media/run/lesson_demo.mp4").status_code == 401
+    assert client.get("/media/run/missing.mp4").status_code == 401
