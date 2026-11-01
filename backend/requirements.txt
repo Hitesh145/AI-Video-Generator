@@ -7,3 +7,5 @@ pillow
 edge-tts
 manim
 pytest
+# PDF parsing for the research-paper RAG pipeline.
+docling==2.143.1

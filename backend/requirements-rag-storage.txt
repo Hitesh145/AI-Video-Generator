@@ -1,0 +1,5 @@
+# Additional packages for the Phase 3 PostgreSQL/pgvector RAG storage layer.
+SQLAlchemy>=2.0,<3.0
+alembic>=1.14,<2.0
+psycopg[binary]>=3.2,<4.0
+pgvector>=0.3,<1.0
