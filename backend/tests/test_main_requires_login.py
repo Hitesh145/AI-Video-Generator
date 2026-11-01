@@ -14,6 +14,10 @@ PROTECTED = [
     ("GET", "/lesson/jobs/abc"),
     ("GET", "/videos"),
     ("GET", "/media/run/lesson_demo.mp4"),
+    ("GET", "/papers"),
+    ("POST", "/papers"),
+    ("GET", "/papers/abc"),
+    ("POST", "/papers/abc/retry"),
 ]
 
 
@@ -58,3 +62,9 @@ def test_the_apps_own_origin_is_not_blocked(client):
     response = client.post("/auth/logout", headers={"Origin": "http://localhost:5173"})
 
     assert response.status_code == 204
+
+
+def test_paper_uploads_from_untrusted_origins_are_refused(client):
+    response = client.post("/papers", json={}, headers={"Origin": "http://localhost:3000"})
+
+    assert response.status_code == 403

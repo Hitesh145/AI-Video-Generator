@@ -117,3 +117,16 @@ hits = storage.search_similar("What is the paper's main idea?", limit=5)
 - Initial embedding generation uses one API call per chunk. The Gemini Embedding 2 text-only retrieval prefixes follow Google's current embedding guidance.
 - Vector table and model are fixed at 1536 dimensions in this initial migration.
 - Plain canonical content survives embedding API failures, allowing embeddings to be retried.
+
+## Uploading papers
+
+Logged-in users upload PDFs through `POST /papers` (multipart field `file`) and follow them with `GET /papers` and `GET /papers/{id}`.
+
+- Limits: PDF only, 50 MB by default (`MAX_PAPER_UPLOAD_MB`). Oversized bodies are refused with 413 before they are read. One paper is read at a time (`MAX_CONCURRENT_INGESTIONS`, default 1).
+- Statuses: `queued` (waiting its turn), `parsing`, `chunking`, `storing`, `embedding`, `ready`, `failed`. A failed paper carries a one-line reason.
+- The same PDF uploaded twice by one user returns the existing paper. If it had failed while being read, uploading it again reads it again.
+- `POST /papers/{id}/retry` re-runs only the indexing (embedding) step of a paper whose text was already saved. A paper that failed while parsing must be uploaded again.
+- Reading runs on in-process threads. If the server stops mid-way, the paper is marked failed on the next start.
+- A PDF with no readable text (for example a scan) fails with a clear message; text recognition for scans is not available yet.
+- Uploaded files are kept in `backend/data/uploads` only while a paper is being read, and are never committed.
+
