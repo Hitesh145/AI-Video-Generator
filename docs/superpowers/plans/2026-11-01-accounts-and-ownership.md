@@ -4,9 +4,9 @@
 
 **Goal:** Add email-and-password accounts, and make every paper, video and job belong to exactly one user, with the existing studio and media endpoints visible only to their owner.
 
-**Architecture:** A new `accounts` package (models, password hashing, server-side sessions, login rate limiter, `AccountService`, FastAPI router) sits on the same PostgreSQL database and Alembic chain as the existing RAG tables. Sessions are random tokens in an HttpOnly cookie (needed because `<video src>` cannot send headers); only a hash of each token is stored. The RAG storage layer drops pgvector, stores embeddings as plain arrays, and scopes every read and write by `user_id`. Studio endpoints, `/videos` and `/media` require a logged-in user and answer 404 for anything owned by someone else.
+**Architecture:** A new `accounts` package (models, password hashing, server-side sessions, login rate limiter, `AccountService`, FastAPI router) sits on the same PostgreSQL database and Alembic chain as the existing RAG tables. Sessions are random tokens in an HttpOnly cookie (needed because `<video src>` cannot send headers); only a hash of each token is stored. The RAG storage layer keeps pgvector (similarity search stays in SQL) and scopes every read and write by `user_id`. Studio endpoints, `/videos` and `/media` require a logged-in user and answer 404 for anything owned by someone else.
 
-**Tech Stack:** FastAPI, SQLAlchemy 2, Alembic, PostgreSQL (psycopg 3), `argon2-cffi`, React 19 + Vite + TypeScript, pytest (SQLite for fast account tests, a disposable PostgreSQL database for integration tests).
+**Tech Stack:** FastAPI, SQLAlchemy 2, Alembic, PostgreSQL with pgvector (psycopg 3), `argon2-cffi`, React 19 + Vite + TypeScript, pytest (SQLite for fast account tests, a disposable PostgreSQL database for integration tests).
 
 **Spec:** `docs/superpowers/specs/2026-11-01-paper-videos-design.md` (sections 7, 8, 9, 10 and the "vector storage" call in section 5). This is project 1 of 5 in section 10; later projects (paper library, grounded videos, accuracy checking) get their own plans.
 
@@ -15,7 +15,7 @@
 - Sign-in is **email and password**, managed by this app. No "forgot password", no email verification, no Google sign-in (spec section 8).
 - Passwords are stored **only as salted hashes**; sessions use a **secure random token**; **login attempts are rate-limited** (spec section 7).
 - Every paper, video and job carries a **user id from the start**; users can read **only their own** (spec section 7). Ordinary topic videos belong to the user too. The existing studio page now **requires login**.
-- Built in the existing Python (FastAPI) backend. PostgreSQL stays; **pgvector is dropped**: embeddings are stored as plain number arrays and compared in Python for the selected paper (spec section 5, my call). Accounts, papers, videos and jobs share the same database and Alembic chain, so the app requires PostgreSQL to be running.
+- Built in the existing Python (FastAPI) backend. PostgreSQL with the **pgvector** extension stays, as in the existing migration (decided with the owner; spec section 5). pgvector must be installed on the owner's PostgreSQL 18 before Task 1 can pass. Accounts, papers, videos and jobs share the same database and Alembic chain, so the app requires PostgreSQL to be running.
 - Runs on the owner's machine first (no deployment work). Sharing between users is out of scope.
 - Backend tests run from `backend/`. Default `python -m pytest -q` excludes `slow`; the full run is `python -m pytest -q -m "slow or not slow"`. Fakes are imported with `from fakes import FakeLLM`.
 - Commit trailer: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Stage files by name only. The working tree has unrelated `backend/output/**` deletions, an untracked `backend/IJRTI2304061.pdf` + `IJRTI2304061_assets/`, and an untracked `backend/rendering/__init__.py`: never stage these.
@@ -35,13 +35,12 @@
 
 **Create**
 - `backend/accounts/__init__.py`, `models.py` (User, AuthSession, Video), `passwords.py`, `rate_limit.py`, `service.py` (AccountService + errors + `UserInfo`), `router.py` (auth endpoints + `create_current_user_dependency`), `videos.py` (VideoRepository).
-- `backend/rag/similarity.py`: pure cosine ranking used by the repository.
 - `backend/alembic/versions/0002_accounts.py`.
-- Tests: `tests/accounts_helpers.py`, `tests/test_similarity.py`, `tests/test_accounts_models.py`, `tests/test_passwords.py`, `tests/test_rate_limit.py`, `tests/test_account_service.py`, `tests/test_auth_router.py`, `tests/test_video_repository.py`, `tests/test_main_requires_login.py`, `tests/test_postgres_integration.py`.
+- Tests: `tests/accounts_helpers.py`, `tests/test_accounts_models.py`, `tests/test_passwords.py`, `tests/test_rate_limit.py`, `tests/test_account_service.py`, `tests/test_auth_router.py`, `tests/test_video_repository.py`, `tests/test_main_requires_login.py`, `tests/test_postgres_integration.py`.
 - Frontend: `frontend/src/api.ts`, `AuthGate.tsx`, `LoginPage.tsx`.
 
 **Modify**
-- `backend/alembic/versions/0001_rag_storage.py` (no pgvector), `backend/rag/db_models.py`, `rag/database.py`, `rag/pg_repository.py`, `rag/storage_service.py`, `rag/storage_schema.py` (if needed), `rag/PHASE3_STORAGE_README.md`, `scripts/check_rag_db.py`, `scripts/ingest_research_pdf.py`.
+- `backend/rag/db_models.py` (owner column, Task 2), `rag/pg_repository.py`, `rag/storage_service.py`, `rag/storage_schema.py` (if needed), `rag/PHASE3_STORAGE_README.md`, `scripts/ingest_research_pdf.py`.
 - `backend/requirements.txt` (DB and auth dependencies move here; `requirements-rag-storage.txt` is deleted), `backend/pytest.ini` (new `integration` marker).
 - `backend/services/job_service.py`, `services/jobs_router.py`, `services/media_response.py`, `services/video_library.py`, `backend/main.py`.
 - `backend/tests/test_rag_storage.py`, `tests/test_job_service.py`, `tests/test_media_response.py`, `tests/test_video_library.py`.
@@ -53,122 +52,72 @@
 - **All `/lesson/*` endpoints require login,** not only the ones the frontend uses, since the debugging endpoints spend Gemini quota. `/` and `/auth/*` are public.
 - **Rate-limit key is (client IP, email)** held in memory, 5 failures per 15 minutes. It resets on server restart.
 - **Existing output folders have no owner row,** so they are not listed or served. The owner already cleared `backend/output`.
-- **Migration 0001 is rewritten in place** because it was never applied anywhere (pgvector was missing); Task 1 verifies this with `alembic current` before editing it.
+- **Migration 0001 is kept as written.** It already creates the `vector` extension, a `VECTOR(1536)` column and an HNSW cosine index; Task 1 only makes the database ready for it.
 
 ---
 
-### Task 1: Database foundation without pgvector
+### Task 1: pgvector available, and the database test harness
 
 **Files:**
-- Create: `backend/rag/similarity.py`, `backend/tests/test_similarity.py`, `backend/tests/test_postgres_integration.py`
-- Modify: `backend/alembic/versions/0001_rag_storage.py`, `backend/rag/db_models.py`, `backend/rag/database.py`, `backend/rag/pg_repository.py`, `backend/scripts/check_rag_db.py`, `backend/rag/PHASE3_STORAGE_README.md`, `backend/requirements.txt`, `backend/pytest.ini`, `backend/tests/test_rag_storage.py`; delete `backend/requirements-rag-storage.txt`.
+- Create: `backend/tests/test_postgres_integration.py`
+- Modify: `backend/requirements.txt`, `backend/pytest.ini`, `backend/rag/PHASE3_STORAGE_README.md`; delete `backend/requirements-rag-storage.txt`.
+- Unchanged on purpose: `alembic/versions/0001_rag_storage.py`, `rag/db_models.py`, `rag/database.py`, `rag/pg_repository.py`, `scripts/check_rag_db.py`.
 
 **Interfaces:**
-- Produces (`rag.similarity`): `cosine_distance(a: Sequence[float], b: Sequence[float]) -> float` (0 identical direction, 1 orthogonal, 2 opposite; raises `ValueError` on length mismatch or a zero vector); `rank_by_cosine(query: Sequence[float], candidates: Sequence[tuple[str, Sequence[float]]], limit: int) -> list[tuple[str, float]]` returning `(candidate_id, distance)` closest first.
-- `RAGChunkEmbedding.embedding` becomes a PostgreSQL array of `REAL`; `PostgresRAGRepository.search_similar(query_vector, model_name, limit=5)` keeps its current signature in this task (scoping arrives in Task 6) but ranks in Python via `rank_by_cosine`.
-- `check_database(engine) -> dict[str, str | None]` returns `{"database": name}` and no longer requires any extension.
-- Test marker `integration` (in `pytest.ini`); integration tests skip unless `RAG_TEST_DATABASE_URL` is set to a **disposable** PostgreSQL database.
+- Consumes: migration `0001_rag_storage` (creates the `vector` extension, `rag_chunk_embeddings.embedding VECTOR(1536)` and an HNSW cosine index); `rag.database.build_engine()` / `check_database(engine)` (returns `{"database": ..., "pgvector_version": ...}`).
+- Produces: pytest marker `integration` (tests skip unless `RAG_TEST_DATABASE_URL` names a **disposable** PostgreSQL database); the fixture `migrated_engine` in `tests/test_postgres_integration.py`, which later tasks extend; `requirements.txt` carrying every database and auth dependency.
 
-- [ ] **Step 1: Confirm migration 0001 was never applied**
+**Owner prerequisite:** pgvector is not installed on this machine (native PostgreSQL 18.1 on Windows, no Docker). The owner installs it once; Step 1 checks it and stops the plan if it is missing.
 
-Run from `backend/`: `python -m alembic -c alembic.ini current`
-Expected: prints no revision (or fails to connect). If it prints `0001_rag_storage (head)`, stop and ask the owner: the migration cannot be rewritten in place on a database that already ran it.
+- [ ] **Step 1: Confirm pgvector is installed in PostgreSQL.** From `backend/` run:
 
-- [ ] **Step 2: Write the failing similarity tests** in `tests/test_similarity.py`:
-
-```python
-import pytest
-
-from rag.similarity import cosine_distance, rank_by_cosine
-
-
-def test_identical_direction_is_zero_and_scale_does_not_matter():
-    assert cosine_distance([1.0, 2.0], [2.0, 4.0]) == pytest.approx(0.0)
-
-
-def test_orthogonal_is_one_and_opposite_is_two():
-    assert cosine_distance([1.0, 0.0], [0.0, 3.0]) == pytest.approx(1.0)
-    assert cosine_distance([1.0, 0.0], [-2.0, 0.0]) == pytest.approx(2.0)
-
-
-@pytest.mark.parametrize("a, b", [([1.0, 2.0], [1.0]), ([0.0, 0.0], [1.0, 1.0]), ([1.0, 1.0], [0.0, 0.0])])
-def test_mismatched_or_zero_vectors_are_rejected(a, b):
-    with pytest.raises(ValueError):
-        cosine_distance(a, b)
-
-
-def test_rank_orders_closest_first_and_applies_the_limit():
-    candidates = [("far", [0.0, 1.0]), ("near", [1.0, 0.1]), ("mid", [1.0, 1.0])]
-
-    ranked = rank_by_cosine([1.0, 0.0], candidates, limit=2)
-
-    assert [item_id for item_id, _ in ranked] == ["near", "mid"]
-    assert ranked[0][1] < ranked[1][1]
-
-
-def test_rank_of_nothing_is_empty():
-    assert rank_by_cosine([1.0], [], limit=5) == []
 ```
+python -c "from rag.database import build_engine; from sqlalchemy import text; c = build_engine().connect(); print(c.execute(text(\"select name, default_version from pg_available_extensions where name = 'vector'\")).all())"
+```
+Expected: `[('vector', '0.8.x')]`. An empty list means pgvector is not installed: stop and ask the owner to install it (README section added in Step 6), then repeat. Do not continue past this step without it.
 
-- [ ] **Step 3: Run to verify it fails**
+- [ ] **Step 2: Create the disposable test database.** Using the same server and credentials as `RAG_DATABASE_URL` but the database name `edugen_rag_test` (for example `CREATE DATABASE edugen_rag_test;` as the superuser), and note its URL as `RAG_TEST_DATABASE_URL` for this session. Never point it at the development database: the tests drop all tables.
 
-Run: `python -m pytest tests/test_similarity.py -q`
-Expected: collection error `ModuleNotFoundError: No module named 'rag.similarity'`.
-
-- [ ] **Step 4: Implement `rag/similarity.py`** with the two functions above (pure Python or `math`; no numpy dependency needed for a few hundred vectors).
-
-- [ ] **Step 5: Run to verify it passes**
-
-Run: `python -m pytest tests/test_similarity.py -q`
-Expected: 5 passed.
-
-- [ ] **Step 6: Add the `integration` marker and write the failing integration test**
-
-In `pytest.ini` add `integration: needs a disposable PostgreSQL database named by RAG_TEST_DATABASE_URL` under `markers`.
-
-Create `tests/test_postgres_integration.py` with a module-level skip (`pytestmark = [pytest.mark.integration, pytest.mark.skipif(not os.getenv("RAG_TEST_DATABASE_URL"), reason=...)]`) and a fixture `migrated_engine` that: sets `RAG_DATABASE_URL` to `RAG_TEST_DATABASE_URL` with `monkeypatch.setenv`, `chdir`s to `backend/`, runs `alembic.command.downgrade(cfg, "base")` then `upgrade(cfg, "head")` using `alembic.config.Config("alembic.ini")`, yields `rag.database.build_engine()`, and disposes it. Tests:
+- [ ] **Step 3: Add the `integration` marker and write the tests** in `tests/test_postgres_integration.py`. In `pytest.ini` add `integration: needs a disposable PostgreSQL database named by RAG_TEST_DATABASE_URL` under `markers`. The test module sets `pytestmark = [pytest.mark.integration, pytest.mark.skipif(not os.getenv("RAG_TEST_DATABASE_URL"), reason="RAG_TEST_DATABASE_URL is not set")]` and defines the fixture `migrated_engine`: set `RAG_DATABASE_URL` from `RAG_TEST_DATABASE_URL` with `monkeypatch.setenv`, `chdir` to `backend/`, run `alembic.command.downgrade(cfg, "base")` then `upgrade(cfg, "head")` for `cfg = alembic.config.Config("alembic.ini")`, yield `build_engine()`, dispose it. Tests:
 
 ```python
-def test_embeddings_are_stored_as_a_plain_real_array(migrated_engine):
+def test_vector_extension_and_column_exist(migrated_engine):
     with migrated_engine.connect() as connection:
-        data_type = connection.execute(text(
-            "SELECT data_type FROM information_schema.columns "
-            "WHERE table_name = 'rag_chunk_embeddings' AND column_name = 'embedding'")).scalar_one()
         extensions = connection.execute(text("SELECT extname FROM pg_extension")).scalars().all()
-    assert data_type == "ARRAY"
-    assert "vector" not in extensions
+        column_type = connection.execute(text(
+            "SELECT udt_name FROM information_schema.columns "
+            "WHERE table_name = 'rag_chunk_embeddings' AND column_name = 'embedding'")).scalar_one()
+    assert "vector" in extensions
+    assert column_type == "vector"
 
 
-def test_check_database_passes_without_pgvector(migrated_engine):
-    assert check_database(migrated_engine)["database"]
+def test_cosine_distance_operator_orders_vectors(migrated_engine):
+    with migrated_engine.connect() as connection:
+        same = connection.execute(text("SELECT '[1,0]'::vector <=> '[2,0]'::vector")).scalar_one()
+        orthogonal = connection.execute(text("SELECT '[1,0]'::vector <=> '[0,1]'::vector")).scalar_one()
+    assert same == pytest.approx(0.0)
+    assert orthogonal == pytest.approx(1.0)
+
+
+def test_check_database_reports_the_pgvector_version(migrated_engine):
+    assert check_database(migrated_engine)["pgvector_version"]
 ```
 
-- [ ] **Step 7: Run to verify it fails (with a test database)**
+- [ ] **Step 4: Run the tests.** With `RAG_TEST_DATABASE_URL` set: `python -m pytest tests/test_postgres_integration.py -q`
+Expected: 3 passed. This task adds no production code; the tests fail before pgvector is installed (the migration cannot create the extension) and pass once Step 1 passes. Without the variable, verify they skip.
 
-First create the disposable database using the same server and credentials as `RAG_DATABASE_URL` but the name `edugen_rag_test` (for example with `psql`: `CREATE DATABASE edugen_rag_test;`), then run with `RAG_TEST_DATABASE_URL=<that url>`: `python -m pytest tests/test_postgres_integration.py -q`
-Expected: failure at `upgrade` because the migration still needs the `vector` extension. Without the variable the tests skip (verify that too).
+- [ ] **Step 5: Merge the dependency files.** Add to `requirements.txt`: `SQLAlchemy>=2.0,<3.0`, `alembic>=1.14,<2.0`, `psycopg[binary]>=3.2,<4.0`, `pgvector>=0.3,<1.0`, `argon2-cffi>=23.1`; delete `requirements-rag-storage.txt`. Run `python -m pip check` and report any conflict by name.
 
-- [ ] **Step 8: Remove pgvector everywhere**
-  - `0001_rag_storage.py`: drop the `CREATE EXTENSION`, the `pgvector` import and the HNSW index; `rag_chunk_embeddings.embedding` becomes `postgresql.ARRAY(sa.REAL())`, not null; update the docstring and the downgrade accordingly.
-  - `rag/db_models.py`: same column type (`mapped_column(ARRAY(REAL), nullable=False)`), delete the `VECTOR` import and the HNSW `Index`.
-  - `rag/database.py`: `check_database` returns `{"database": name}` after a connectivity query; delete the extension check.
-  - `rag/pg_repository.py`: `search_similar` loads `(chunk, document, embedding)` rows for the model name and dimensions, ranks with `rank_by_cosine`, and builds the same `SimilarityHit` objects.
-  - `scripts/check_rag_db.py`: print only the database name.
-  - `requirements.txt`: add `SQLAlchemy>=2.0,<3.0`, `alembic>=1.14,<2.0`, `psycopg[binary]>=3.2,<4.0`, `argon2-cffi>=23.1` (drop the separate `pgvector`); delete `requirements-rag-storage.txt`.
-  - `PHASE3_STORAGE_README.md`: replace the pgvector instructions with the plain-array approach and the `RAG_TEST_DATABASE_URL` note.
-  - `tests/test_rag_storage.py`: replace `test_vector_model_schema_is_available_when_pgvector_is_installed` with a test asserting `RAGChunkEmbedding.__table__.c.embedding.type` is a PostgreSQL `ARRAY` and the six table names exist.
+- [ ] **Step 6: Document the install.** In `PHASE3_STORAGE_README.md` replace the dependency instructions with `pip install -r requirements.txt`, add the Windows pgvector build steps below, and note the `RAG_TEST_DATABASE_URL` test database. Windows build (x64 Native Tools Command Prompt for VS, run as administrator): `set "PGROOT=C:\Program Files\PostgreSQL\18"`, clone `https://github.com/pgvector/pgvector.git` at tag `v0.8.7`, then `nmake /F Makefile.win` and `nmake /F Makefile.win install`.
 
-- [ ] **Step 9: Run to verify it passes**
+- [ ] **Step 7: Run the default suite and commit**
 
-Run: `python -m pytest -q` then, with `RAG_TEST_DATABASE_URL` set, `python -m pytest tests/test_postgres_integration.py -q`
-Expected: the default suite passes; the integration tests pass (2 passed).
-
-- [ ] **Step 10: Commit**
+Run: `python -m pytest -q` (expected: passes), then:
 
 ```bash
-git add rag/similarity.py rag/db_models.py rag/database.py rag/pg_repository.py rag/PHASE3_STORAGE_README.md alembic/versions/0001_rag_storage.py scripts/check_rag_db.py requirements.txt pytest.ini tests/test_similarity.py tests/test_postgres_integration.py tests/test_rag_storage.py
+git add tests/test_postgres_integration.py requirements.txt pytest.ini rag/PHASE3_STORAGE_README.md
 git rm requirements-rag-storage.txt
-git commit -m "Store embeddings as plain arrays and drop the pgvector requirement" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+git commit -m "Add the PostgreSQL integration test harness and merge database dependencies" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -617,7 +566,7 @@ Expected: everything passes; report both counts.
 - [ ] **Step 2: Migrate the development database**
 
 Run: `python -m alembic -c alembic.ini upgrade head` then `python -m scripts.check_rag_db`
-Expected: both migrations apply (this creates the tables in the database named by `RAG_DATABASE_URL`, which is the owner's development database); `check_rag_db` prints the database name.
+Expected: both migrations apply (this creates the tables in the database named by `RAG_DATABASE_URL`, which is the owner's development database); `check_rag_db` prints the database name and the pgvector version.
 
 - [ ] **Step 3: Two accounts against the real server**
 
