@@ -9,3 +9,10 @@ manim
 pytest
 # PDF parsing for the research-paper RAG pipeline.
 docling==2.143.1
+# PostgreSQL storage (accounts, papers, jobs, vectors) and migrations.
+SQLAlchemy>=2.0,<3.0
+alembic>=1.14,<2.0
+psycopg[binary]>=3.2,<4.0
+pgvector>=0.3,<1.0
+# Password hashing for user accounts.
+argon2-cffi>=23.1

@@ -17,13 +17,32 @@ The migration creates an HNSW cosine index. PostgreSQL must have the pgvector ex
 
 ## Install dependencies
 
-From the active backend environment, you can install the additional dependencies explicitly:
+From the active backend environment:
 
 ```powershell
-python -m pip install -r requirements-rag-storage.txt
+python -m pip install -r requirements.txt
 ```
 
-`google-genai`, `python-dotenv`, and the Phase 1/2 dependencies are part of the project's existing environment. This supplemental requirements file is intentionally separate so the existing dependency file is not rewritten. Review `python -m pip check` after installing; do not blindly downgrade unrelated packages to fix pre-existing conflicts.
+All database, migration, pgvector and account dependencies are in `requirements.txt`. Review `python -m pip check` after installing; do not blindly downgrade unrelated packages to fix pre-existing conflicts.
+
+### Installing the pgvector extension on Windows
+
+The `pgvector` Python package is only the client. The PostgreSQL **server** also needs the extension. On Windows, with the C++ build tools (Visual Studio Build Tools) installed, open a Command Prompt **as administrator** and run, adjusting the paths to your installation:
+
+```
+"C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+set "PGROOT=C:\Program Files\PostgreSQL\18"
+git clone --branch v0.8.7 https://github.com/pgvector/pgvector.git
+cd pgvector
+nmake /F Makefile.win
+nmake /F Makefile.win install
+```
+
+Verify with `select name, default_version from pg_available_extensions where name = 'vector'`. The migration then runs `CREATE EXTENSION vector` itself (the database role must be allowed to create extensions, as a superuser is).
+
+### Integration-test database
+
+Tests marked `integration` need a disposable PostgreSQL database on the same server, for example `edugen_rag_test`. Set `RAG_TEST_DATABASE_URL` (environment or `backend/.env`) to its URL. The tests wipe and recreate its tables, so never point it at the development database. Without the variable they are skipped.
 
 ## Environment variables
 
@@ -89,7 +108,7 @@ hits = storage.search_similar("What is the paper's main idea?", limit=5)
 
 ## Tests and what they do not prove
 
-`tests/test_rag_storage.py` tests asset copying, checksums, idempotency orchestration, metadata guards, Gemini input formatting, vector dimension checks and batch behavior using fakes. `tests/test_rag_db_models.py` checks ORM table definitions when pgvector is installed. These tests do not replace a real PostgreSQL/pgvector migration test or a live Gemini API request.
+`tests/test_rag_storage.py` tests asset copying, checksums, idempotency orchestration, metadata guards, Gemini input formatting, vector dimension checks and batch behavior using fakes. `tests/test_rag_db_models.py` checks ORM table definitions when pgvector is installed. `tests/test_postgres_integration.py` runs the migrations on a real PostgreSQL with pgvector (see above). None of the tests make a live Gemini API request.
 
 ## Limitations
 
