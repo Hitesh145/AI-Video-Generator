@@ -32,12 +32,28 @@ pytestmark = [
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+def reset_to_base(config):
+    """Empty the tables, then downgrade: earlier runs may have left data that a downgrade cannot keep.
+
+    (For example two users holding the same PDF cannot satisfy the old one-copy-per-PDF constraint.)
+    """
+    engine = build_engine()
+    try:
+        with engine.begin() as connection:
+            for table in ("users", "rag_documents"):
+                if connection.execute(text("SELECT to_regclass(:name)"), {"name": f"public.{table}"}).scalar_one():
+                    connection.execute(text(f"DELETE FROM {table}"))
+    finally:
+        engine.dispose()
+    command.downgrade(config, "base")
+
+
 @pytest.fixture
 def migrated_engine(monkeypatch):
     monkeypatch.setenv("RAG_DATABASE_URL", os.environ["RAG_TEST_DATABASE_URL"])
     monkeypatch.chdir(BACKEND_DIR)
     config = Config("alembic.ini")
-    command.downgrade(config, "base")
+    reset_to_base(config)
     command.upgrade(config, "head")
     engine = build_engine()
     try:
@@ -95,7 +111,7 @@ def test_upgrade_refuses_to_guess_an_owner_for_existing_documents(monkeypatch):
     monkeypatch.setenv("RAG_DATABASE_URL", os.environ["RAG_TEST_DATABASE_URL"])
     monkeypatch.chdir(BACKEND_DIR)
     config = Config("alembic.ini")
-    command.downgrade(config, "base")
+    reset_to_base(config)
     command.upgrade(config, "0001_rag_storage")
     engine = build_engine()
     try:

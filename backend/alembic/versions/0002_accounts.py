@@ -70,6 +70,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Restoring the single-column unique constraint fails if two users hold the same PDF;
+    # remove the duplicates first if you really need to go back.
     op.drop_constraint("uq_rag_documents_user_source_sha256", "rag_documents", type_="unique")
     op.create_unique_constraint("uq_rag_documents_source_sha256", "rag_documents", ["source_sha256"])
     op.drop_index("ix_rag_documents_user_id", table_name="rag_documents")
