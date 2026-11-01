@@ -284,3 +284,34 @@ def test_a_restart_with_no_upload_folder_yet_is_fine(env):
     assert not env.upload_dir.exists()
 
     assert env.service.fail_interrupted() == 0
+
+
+def test_two_simultaneous_reuploads_of_a_failed_paper_start_only_one_read(env):
+    env.fake.fail_ingest_with = RuntimeError("layout model crashed")
+    failed, _ = upload(env)
+    stale = env.service.get(failed.paper_id, env.one)                    # both requests saw "failed"
+    jobs = []
+    deferred = PaperService(env.repo, env.fake, env.upload_dir, submit=jobs.append)
+
+    first, _ = deferred.upload(env.one, "a.pdf", io.BytesIO(PDF))
+    env.repo.find_by_hash = lambda user_id, digest: stale                # the second request read it earlier
+    second, created = deferred.upload(env.one, "a.pdf", io.BytesIO(PDF))
+
+    assert first.paper_id == second.paper_id and created is False
+    assert len(jobs) == 1
+    assert list(env.upload_dir.iterdir()) == [next(env.upload_dir.glob(f"{failed.paper_id}.pdf"))]   # only the one kept file
+
+
+def test_two_simultaneous_retries_start_only_one_job(env):
+    env.fake.fail_embed_with = RuntimeError("getaddrinfo failed")
+    record, _ = upload(env)
+    stale = env.service.get(record.paper_id, env.one)                    # both clicks saw a retry-able paper
+    jobs = []
+    deferred = PaperService(env.repo, env.fake, env.upload_dir, submit=jobs.append)
+
+    deferred.retry(record.paper_id, env.one)
+    env.repo.get = lambda paper_id, user_id: stale
+
+    with pytest.raises(CannotRetry):
+        deferred.retry(record.paper_id, env.one)
+    assert len(jobs) == 1

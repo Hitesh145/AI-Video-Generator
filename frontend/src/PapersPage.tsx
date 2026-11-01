@@ -17,6 +17,7 @@ function PapersPage() {
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
     const [uploading, setUploading] = useState(false);
+    const [retrying, setRetrying] = useState<string | null>(null);
     const [dragging, setDragging] = useState(false);
     const [reloadToken, setReloadToken] = useState(0);
     const fileInput = useRef<HTMLInputElement>(null);
@@ -55,6 +56,7 @@ function PapersPage() {
     }, [reloadToken]);
 
     async function upload(file: File) {
+        if (uploading) return;           // a second drop while one is in flight is ignored
         setError("");
         setNotice("");
         if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -84,6 +86,8 @@ function PapersPage() {
     }
 
     async function retry(paperId: string) {
+        if (retrying) return;
+        setRetrying(paperId);
         setError("");
         try {
             const response = await apiFetch(`/papers/${paperId}/retry`, { method: "POST" });
@@ -91,6 +95,8 @@ function PapersPage() {
             setReloadToken((token) => token + 1);
         } catch {
             setError("Could not reach the server. Is the backend running?");
+        } finally {
+            setRetrying(null);
         }
     }
 
@@ -136,7 +142,7 @@ function PapersPage() {
                                 {paper.detail && <small className={`paper-detail ${paper.status === "failed" ? "failed" : ""}`}>{paper.detail}</small>}
                             </div>
                             <span className={`status-chip status-${paper.status}`}>{STATUS_LABELS[paper.status] ?? paper.status}</span>
-                            {paper.can_retry && <button className="link-button" onClick={() => void retry(paper.paper_id)}>Retry</button>}
+                            {paper.can_retry && <button className="link-button" disabled={retrying !== null} onClick={() => void retry(paper.paper_id)}>Retry</button>}
                         </li>
                     ))}
                 </ul>

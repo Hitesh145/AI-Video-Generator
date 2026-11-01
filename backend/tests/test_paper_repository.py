@@ -101,3 +101,32 @@ def test_fail_interrupted_only_touches_unfinished_papers(env):
     assert env.repo.get(embedding.paper_id, env.one).detail == "The server restarted"
     assert env.repo.get(ready.paper_id, env.one).status == "ready"
     assert env.repo.get(failed.paper_id, env.one).detail == "earlier problem"
+
+
+def test_claiming_a_paper_for_reading_works_once_and_only_for_failed_papers_without_a_document(env):
+    failed = env.repo.create(env.one, "f.pdf", 1, "1" * 64)
+    env.repo.update(failed.paper_id, status="failed", detail="boom")
+    stored = env.repo.create(env.one, "s.pdf", 1, "2" * 64)
+    env.repo.update(stored.paper_id, status="failed", document_id="doc-1")
+    ready = env.repo.create(env.one, "r.pdf", 1, "3" * 64)
+    env.repo.update(ready.paper_id, status="ready")
+
+    assert env.repo.claim_for_reading(failed.paper_id) is True
+    assert env.repo.claim_for_reading(failed.paper_id) is False         # already claimed
+    assert env.repo.claim_for_reading(stored.paper_id) is False         # has stored text: use retry
+    assert env.repo.claim_for_reading(ready.paper_id) is False
+    after = env.repo.get(failed.paper_id, env.one)
+    assert (after.status, after.detail) == ("queued", None)
+
+
+def test_claiming_a_paper_for_retry_works_once_and_only_for_failed_papers_with_a_document(env):
+    stored = env.repo.create(env.one, "s.pdf", 1, "2" * 64)
+    env.repo.update(stored.paper_id, status="failed", document_id="doc-1", detail="indexing failed")
+    unstored = env.repo.create(env.one, "u.pdf", 1, "4" * 64)
+    env.repo.update(unstored.paper_id, status="failed")
+
+    assert env.repo.claim_for_retry(stored.paper_id) is True
+    assert env.repo.claim_for_retry(stored.paper_id) is False
+    assert env.repo.claim_for_retry(unstored.paper_id) is False
+    after = env.repo.get(stored.paper_id, env.one)
+    assert (after.status, after.detail) == ("embedding", "Indexing passages")

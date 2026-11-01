@@ -69,13 +69,6 @@ ALLOWED_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
 ]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
 add_origin_check(app, ALLOWED_ORIGINS)
 
 session_factory = build_session_factory()
@@ -147,6 +140,17 @@ app.add_middleware(
     UploadSizeLimitMiddleware,
     max_body_bytes=max_paper_upload_bytes + MULTIPART_OVERHEAD_BYTES,
     message=f"The file is larger than the {max_paper_upload_bytes // (1024 * 1024)} MB limit",
+)
+
+
+# Starlette puts the middleware added LAST outermost. CORS goes last so that refusals from the
+# origin check and the size limit still carry CORS headers and the browser can show their message.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 

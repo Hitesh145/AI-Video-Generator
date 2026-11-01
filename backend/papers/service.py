@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError
 
-from papers.models import EMBEDDING, FAILED, QUEUED, READY
+from papers.models import FAILED, READY
 from papers.repository import PaperRecord, PaperReport, PaperRepository
 
 DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -119,7 +119,8 @@ class PaperService:
             raise CannotRetry("Only failed papers can be retried")
         if record.document_id is None:
             raise CannotRetry("This paper failed while it was being read; please upload it again")
-        self.repository.update(paper_id, status=EMBEDDING, detail=STAGE_DETAILS[EMBEDDING])
+        if not self.repository.claim_for_retry(paper_id):      # another request got there first
+            raise CannotRetry("Only failed papers can be retried")
         self._dispatch(paper_id, lambda: self._embed_only(paper_id, record.document_id))
         return self.repository.get(paper_id, user_id)
 
@@ -175,8 +176,9 @@ class PaperService:
         return True
 
     def _requeue(self, existing: PaperRecord, part: Path) -> PaperRecord:
-        self.repository.update(existing.paper_id, status=QUEUED, detail=None)
-        self._begin(existing, part)
+        if self.repository.claim_for_reading(existing.paper_id):
+            self._begin(existing, part)
+        # else: an identical upload already restarted it; this copy is simply dropped by the caller
         return self.repository.get(existing.paper_id, existing.user_id)
 
     # ------------------------------------------------------------------ background work

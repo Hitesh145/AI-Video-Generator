@@ -9,7 +9,7 @@ from uuid import uuid4
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import sessionmaker
 
-from papers.models import FAILED, IN_PROGRESS, QUEUED, Paper
+from papers.models import EMBEDDING, FAILED, IN_PROGRESS, QUEUED, Paper
 from rag.db_models import RAGDocument, RAGDocumentBlock, RAGDocumentChunk
 
 UPDATABLE_FIELDS = frozenset({"status", "detail", "title", "page_count", "document_id"})
@@ -102,6 +102,24 @@ class PaperRepository:
             session.execute(
                 update(Paper).where(Paper.paper_id == paper_id).values(**fields, updated_at=func.now())
             )
+
+    def claim_for_reading(self, paper_id: str) -> bool:
+        """Failed-while-reading paper -> queued. True only for the one caller that wins the race."""
+        return self._claim(paper_id, Paper.document_id.is_(None), status=QUEUED, detail=None)
+
+    def claim_for_retry(self, paper_id: str) -> bool:
+        """Failed paper whose text is stored -> embedding. True only for the one caller that wins the race."""
+        return self._claim(paper_id, Paper.document_id.is_not(None), status=EMBEDDING, detail="Indexing passages")
+
+    def _claim(self, paper_id: str, document_condition, **values) -> bool:
+        statement = (
+            update(Paper)
+            .where(Paper.paper_id == paper_id, Paper.status == FAILED, document_condition)
+            .values(**values, updated_at=func.now())
+            .returning(Paper.paper_id)
+        )
+        with self._session_factory.begin() as session:
+            return session.execute(statement).first() is not None
 
     def fail_interrupted(self, message: str) -> int:
         with self._session_factory.begin() as session:

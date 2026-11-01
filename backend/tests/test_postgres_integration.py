@@ -244,3 +244,15 @@ def test_the_real_ingestor_reads_a_text_pdf_into_postgres(migrated_engine, tmp_p
     embedded = ingestor.embed(result.document_id, lambda status, detail=None: stages.append(status))
     assert embedded >= 1
     assert stages[-1] == "embedding"
+
+
+def test_claims_are_atomic_on_postgres(migrated_engine):
+    factory = build_session_factory(migrated_engine)
+    owner, _ = AccountService(factory).signup("owner@example.com", "password1")
+    papers = PaperRepository(factory)
+    paper = papers.create(owner.user_id, "paper.pdf", 10, "d" * 64)
+    papers.update(paper.paper_id, status="failed")
+
+    assert papers.claim_for_reading(paper.paper_id) is True
+    assert papers.claim_for_reading(paper.paper_id) is False
+    assert papers.get(paper.paper_id, owner.user_id).status == "queued"

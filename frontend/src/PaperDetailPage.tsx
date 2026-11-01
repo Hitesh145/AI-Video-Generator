@@ -16,6 +16,7 @@ function PaperDetailPage({ paperId }: { paperId: string }) {
     const [load, setLoad] = useState<Load>({ kind: "loading" });
     const [reloadToken, setReloadToken] = useState(0);
     const [retryError, setRetryError] = useState("");
+    const [retrying, setRetrying] = useState(false);
 
     // Fetches the paper, and keeps refreshing every 2 s while it is still being read.
     useEffect(() => {
@@ -54,6 +55,8 @@ function PaperDetailPage({ paperId }: { paperId: string }) {
     }, [paperId, reloadToken]);
 
     async function retry() {
+        if (retrying) return;
+        setRetrying(true);
         setRetryError("");
         try {
             const response = await apiFetch(`/papers/${encodeURIComponent(paperId)}/retry`, { method: "POST" });
@@ -61,6 +64,8 @@ function PaperDetailPage({ paperId }: { paperId: string }) {
             setReloadToken((token) => token + 1);
         } catch {
             setRetryError("Could not reach the server. Is the backend running?");
+        } finally {
+            setRetrying(false);
         }
     }
 
@@ -92,7 +97,7 @@ function PaperDetailPage({ paperId }: { paperId: string }) {
                 </p>
                 <p><span className={`status-chip status-${paper.status}`}>{STATUS_LABELS[paper.status] ?? paper.status}</span>
                     {paper.detail && <small className={`paper-detail ${paper.status === "failed" ? "failed" : ""}`}> {paper.detail}</small>}
-                    {paper.can_retry && <button className="link-button" onClick={() => void retry()}> Retry</button>}</p>
+                    {paper.can_retry && <button className="link-button" disabled={retrying} onClick={() => void retry()}> Retry</button>}</p>
                 {retryError && <p className="error-message">{retryError}</p>}
             </div>
             <section className="report-section">

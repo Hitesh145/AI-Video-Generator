@@ -68,3 +68,13 @@ def test_paper_uploads_from_untrusted_origins_are_refused(client):
     response = client.post("/papers", json={}, headers={"Origin": "http://localhost:3000"})
 
     assert response.status_code == 403
+
+
+def test_an_oversized_upload_is_refused_with_headers_the_browser_can_read(client):
+    too_big = b"x" * (51 * 1024 * 1024 + 70_000)       # more than the 50 MB default plus form overhead
+
+    response = client.post("/papers", content=too_big, headers={"Origin": "http://localhost:5173"})
+
+    assert response.status_code == 413
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "larger than" in response.json()["detail"]
