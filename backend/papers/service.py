@@ -124,7 +124,19 @@ class PaperService:
         return self.repository.get(paper_id, user_id)
 
     def fail_interrupted(self) -> int:
+        """Run once at startup: nothing can still be reading, so unfinished papers are failed
+        and anything an interrupted read left in the upload folder is removed."""
+        self._clear_upload_dir()
         return self.repository.fail_interrupted("The server restarted while this paper was being processed")
+
+    def _clear_upload_dir(self) -> None:
+        if not self.upload_dir.is_dir():
+            return
+        for entry in self.upload_dir.iterdir():
+            if entry.is_dir():
+                shutil.rmtree(entry, ignore_errors=True)
+            else:
+                entry.unlink(missing_ok=True)
 
     def wait(self, paper_id: str, timeout: float | None = None) -> None:
         with self._threads_lock:

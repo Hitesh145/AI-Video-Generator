@@ -266,3 +266,21 @@ def test_only_one_paper_is_read_at_a_time_and_the_rest_wait_as_queued(env, tmp_p
     for paper_id in ids:
         threaded.wait(paper_id, timeout=20)
     assert {threaded.get(i, env.one).status for i in ids} == {"ready"}
+
+
+def test_a_restart_clears_files_left_behind_by_an_interrupted_read(env):
+    env.upload_dir.mkdir(parents=True)
+    (env.upload_dir / "old-paper.pdf").write_bytes(PDF)
+    (env.upload_dir / "half-uploaded.part").write_bytes(b"%PDF-")
+    (env.upload_dir / "old-paper.work" / "figures").mkdir(parents=True)
+    (env.upload_dir / "old-paper.work" / "figures" / "figure_1.png").write_bytes(b"png")
+
+    env.service.fail_interrupted()
+
+    assert list(env.upload_dir.iterdir()) == []
+
+
+def test_a_restart_with_no_upload_folder_yet_is_fine(env):
+    assert not env.upload_dir.exists()
+
+    assert env.service.fail_interrupted() == 0
