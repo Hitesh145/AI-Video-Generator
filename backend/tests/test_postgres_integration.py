@@ -16,7 +16,9 @@ from sqlalchemy import text
 
 from accounts.service import AccountService
 from rag.asset_store import ManagedAssetStore
+from papers.ingestor import PaperIngestor
 from papers.repository import PaperRepository
+from pdf_helpers import make_text_pdf
 from rag.database import build_engine, build_session_factory, check_database
 from rag.pg_repository import PostgresRAGRepository
 from rag.storage_config import EMBEDDING_DIMENSIONS
@@ -219,3 +221,26 @@ def test_report_counts_chunks_figures_and_warnings(migrated_engine, tmp_path):
     assert (report.title, report.authors, report.page_count) == ("Test paper", ["Example Author"], 1)
     assert (report.chunk_count, report.figure_count) == (1, 1)
     assert report.warnings == []
+
+
+@pytest.mark.slow
+def test_the_real_ingestor_reads_a_text_pdf_into_postgres(migrated_engine, tmp_path):
+    factory = build_session_factory(migrated_engine)
+    owner, _ = AccountService(factory).signup("owner@example.com", "password1")
+    storage = RAGStorageService(PostgresRAGRepository(factory), ManagedAssetStore(tmp_path / "assets"), ConstantEmbedder())
+    pdf = make_text_pdf(tmp_path / "small.pdf", [
+        "Binary Search",
+        "Binary search finds a value in a sorted list.",
+        "It halves the search range at every step.",
+    ])
+    stages = []
+    ingestor = PaperIngestor(storage)
+
+    result = ingestor.ingest(owner.user_id, pdf, tmp_path / "work", lambda status, detail=None: stages.append(status))
+
+    assert stages == ["parsing", "chunking", "storing"]
+    report = PaperRepository(factory).report(result.document_id)
+    assert report.chunk_count >= 1
+    embedded = ingestor.embed(result.document_id, lambda status, detail=None: stages.append(status))
+    assert embedded >= 1
+    assert stages[-1] == "embedding"
