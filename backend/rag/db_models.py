@@ -34,10 +34,13 @@ class RAGDocument(Base):
     __tablename__ = "rag_documents"
     __table_args__ = (
         CheckConstraint("page_count IS NULL OR page_count > 0", name="ck_rag_documents_page_count"),
-        UniqueConstraint("source_sha256", name="uq_rag_documents_source_sha256"),
+        UniqueConstraint("user_id", "source_sha256", name="uq_rag_documents_user_source_sha256"),
     )
 
     document_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False
+    )
     source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     source_filename: Mapped[str] = mapped_column(String(512), nullable=False)
     source_asset_key: Mapped[str] = mapped_column(Text, nullable=False)
@@ -193,3 +196,9 @@ Index(
     postgresql_using="hnsw",
     postgresql_ops={"embedding": "vector_cosine_ops"},
 )
+
+
+# RAGDocument.user_id references the users table, so anything that imports these models
+# alone (Alembic, the repository) must also see the account tables. Kept at the bottom
+# because accounts.models imports Base from this module.
+import accounts.models  # noqa: E402,F401
