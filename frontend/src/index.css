@@ -75,3 +75,7 @@ button, textarea { font: inherit; }
 .login-card input:focus { border-color: #b5d85d; }
 .login-card .hint { margin: 0; color: #6f7866; font: 11px "DM Mono", monospace; }
 .auth-loading { padding: 90px 5vw; color: #899080; font: 12px "DM Mono", monospace; }
+.nav { display: flex; gap: 6px; }
+.nav-link { padding: 8px 14px; border: 1px solid transparent; color: #899080; text-decoration: none; font: 12px "DM Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
+.nav-link:hover { color: #dce1ce; border-color: #414a3c; }
+.nav-link.active { color: #111310; background: #b5d85d; border-color: #b5d85d; }
