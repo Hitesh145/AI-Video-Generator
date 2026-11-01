@@ -7,12 +7,14 @@ from papers.models import Paper
 from rag.db_models import Base
 
 
-def make_session_factory() -> sessionmaker:
-    """In-memory SQLite with only the account tables (the RAG tables need PostgreSQL types)."""
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+def make_session_factory(path=None) -> sessionmaker:
+    """SQLite with only the account tables (the RAG tables need PostgreSQL types).
+
+    In memory by default; pass a file path when several threads will use it at once.
+    """
+    if path is None:
+        engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    else:
+        engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False, "timeout": 30})
     Base.metadata.create_all(engine, tables=[User.__table__, AuthSession.__table__, Video.__table__, Paper.__table__])
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
