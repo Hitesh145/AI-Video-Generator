@@ -202,3 +202,4 @@ Index(
 # alone (Alembic, the repository) must also see the account tables. Kept at the bottom
 # because accounts.models imports Base from this module.
 import accounts.models  # noqa: E402,F401
+import papers.models  # noqa: E402,F401

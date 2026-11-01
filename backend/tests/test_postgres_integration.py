@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 from accounts.service import AccountService
 from rag.asset_store import ManagedAssetStore
+from papers.repository import PaperRepository
 from rag.database import build_engine, build_session_factory, check_database
 from rag.pg_repository import PostgresRAGRepository
 from rag.storage_config import EMBEDDING_DIMENSIONS
@@ -179,3 +180,42 @@ def test_two_users_store_the_same_paper_and_search_stays_private(migrated_engine
     assert service.search_similar(alice.user_id, "anything", document_id=document_ids["alice"])
     assert service.search_similar(alice.user_id, "anything", document_id=document_ids["bob"]) == []
     assert service.search_similar(carol.user_id, "anything") == []
+
+
+def test_papers_table_exists_with_its_constraints(migrated_engine, tmp_path):
+    factory = build_session_factory(migrated_engine)
+    owner, _ = AccountService(factory).signup("owner@example.com", "password1")
+    service = RAGStorageService(PostgresRAGRepository(factory), ManagedAssetStore(tmp_path / "assets"), ConstantEmbedder())
+    pdf_path, _, document, chunk = make_fixture(tmp_path)
+    stored = service.persist_document(owner.user_id, pdf_path, document, [chunk])
+    papers = PaperRepository(factory)
+    paper = papers.create(owner.user_id, "paper.pdf", 10, "c" * 64)
+    papers.update(paper.paper_id, document_id=stored.document_id)
+
+    with migrated_engine.connect() as connection:
+        constraints = connection.execute(
+            text("SELECT conname FROM pg_constraint WHERE conrelid = 'papers'::regclass")
+        ).scalars().all()
+    assert "uq_papers_user_sha256" in constraints
+
+    with migrated_engine.begin() as connection:             # removing the stored document keeps the library row
+        connection.execute(text("DELETE FROM rag_documents"))
+    assert papers.get(paper.paper_id, owner.user_id).document_id is None
+
+    with migrated_engine.begin() as connection:             # removing the user removes their papers
+        connection.execute(text("DELETE FROM users"))
+    assert papers.list_for_user(owner.user_id) == []
+
+
+def test_report_counts_chunks_figures_and_warnings(migrated_engine, tmp_path):
+    factory = build_session_factory(migrated_engine)
+    owner, _ = AccountService(factory).signup("owner@example.com", "password1")
+    service = RAGStorageService(PostgresRAGRepository(factory), ManagedAssetStore(tmp_path / "assets"), ConstantEmbedder())
+    pdf_path, _, document, chunk = make_fixture(tmp_path)
+    stored = service.persist_document(owner.user_id, pdf_path, document, [chunk])
+
+    report = PaperRepository(factory).report(stored.document_id)
+
+    assert (report.title, report.authors, report.page_count) == ("Test paper", ["Example Author"], 1)
+    assert (report.chunk_count, report.figure_count) == (1, 1)
+    assert report.warnings == []
