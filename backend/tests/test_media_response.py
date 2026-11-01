@@ -169,3 +169,42 @@ def test_authorize_can_demand_login_with_401(tmp_path):
 
     assert client.get("/media/run/lesson_demo.mp4").status_code == 401
     assert client.get("/media/run/missing.mp4").status_code == 401
+
+
+def make_two_owner_client(tmp_path):
+    root = tmp_path / "output"
+    for name, body in (("alice-run", b"ALICE"), ("bob-run", b"BOB-SECRET")):
+        (root / name).mkdir(parents=True)
+        (root / name / "lesson_demo.mp4").write_bytes(body)
+    (root / "bob-run" / "llm_calls.json").write_text("{}", encoding="utf-8")
+    owners = {"alice-run": "alice", "bob-run": "bob"}
+
+    def authorize(request, relative_path):          # the same rule main.py uses: first segment decides
+        return owners.get(relative_path.split("/")[0]) == "alice"
+
+    app = FastAPI()
+    app.include_router(create_media_router(root, authorize=authorize))
+    return TestClient(app)
+
+
+def test_the_owner_can_still_read_their_own_run(tmp_path):
+    response = make_two_owner_client(tmp_path).get("/media/alice-run/lesson_demo.mp4")
+
+    assert (response.status_code, response.content) == (200, b"ALICE")
+
+
+@pytest.mark.parametrize("url", [
+    "/media/bob-run/lesson_demo.mp4",
+    "/media/alice-run/%2e%2e/bob-run/lesson_demo.mp4",
+    "/media/alice-run%2F..%2Fbob-run%2Flesson_demo.mp4",
+    "/media/alice-run/..%5Cbob-run/lesson_demo.mp4",
+    "/media/alice-run/%2e%2e/bob-run/llm_calls.json",
+    "/media/alice-run//bob-run/lesson_demo.mp4",
+    "/media/alice-run/./../bob-run/lesson_demo.mp4",
+    "/media/alice-run/C:%5Cwindows%5Cwin.ini",
+])
+def test_encoded_dot_segments_cannot_borrow_another_runs_ownership(tmp_path, url):
+    response = make_two_owner_client(tmp_path).get(url)
+
+    assert response.status_code == 404
+    assert b"BOB-SECRET" not in response.content

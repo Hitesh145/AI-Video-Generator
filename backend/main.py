@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pathlib import Path
 
+from accounts.origin import add_origin_check
 from accounts.router import SESSION_COOKIE, create_auth_router, create_current_user_dependency
 from accounts.service import AccountService, UserInfo
 from accounts.videos import VideoRepository
@@ -55,18 +56,20 @@ app = FastAPI()
 output_root = Path(__file__).parent / "output"
 output_root.mkdir(parents=True, exist_ok=True)
 
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+add_origin_check(app, ALLOWED_ORIGINS)
 
 session_factory = build_session_factory()
 account_service = AccountService(session_factory)

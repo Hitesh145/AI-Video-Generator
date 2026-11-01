@@ -90,9 +90,10 @@ class AccountService:
             )
 
         user_id = str(uuid4())
+        password_hash = hash_password(password)     # slow and memory-hungry: do it before opening a transaction
         try:
             with self._session_factory.begin() as session:
-                session.add(User(user_id=user_id, email=email, password_hash=hash_password(password)))
+                session.add(User(user_id=user_id, email=email, password_hash=password_hash))
                 session.flush()
                 token = self._start_session(session, user_id)
         except IntegrityError as exc:
@@ -106,16 +107,19 @@ class AccountService:
         if retry is not None:
             raise TooManyAttempts(retry)
 
-        with self._session_factory.begin() as session:
+        with self._session_factory() as session:
             user = session.scalar(select(User).where(User.email == email))
-            stored_hash = user.password_hash if user else _dummy_hash()
-            matches = verify_password(password, stored_hash)
-            if user is None or not matches:
-                self._limiter.record_failure(key)
-                raise InvalidLogin()
-            self._limiter.reset(key)
-            token = self._start_session(session, user.user_id)
-            return UserInfo(user.user_id, user.email), token
+            found = (user.user_id, user.email, user.password_hash) if user else None
+
+        # Verified with no database session open, so a slow hash cannot exhaust the connection pool.
+        matches = verify_password(password, found[2] if found else _dummy_hash())
+        if found is None or not matches:
+            self._limiter.record_failure(key)
+            raise InvalidLogin()
+        self._limiter.reset(key)
+        with self._session_factory.begin() as session:
+            token = self._start_session(session, found[0])
+        return UserInfo(found[0], found[1]), token
 
     def user_for_token(self, token: str) -> UserInfo | None:
         if not token:

@@ -1,4 +1,6 @@
-export const API_BASE = "http://localhost:8000";
+// Same hostname as the page (localhost or 127.0.0.1): the session cookie only travels between
+// the same site, so the page and the API must not be reached through different hostnames.
+export const API_BASE = `http://${window.location.hostname}:8000`;
 export const UNAUTHORIZED_EVENT = "edugen:unauthorized";
 
 export type AuthUser = { user_id: string; email: string };

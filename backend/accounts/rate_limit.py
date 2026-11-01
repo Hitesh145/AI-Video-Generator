@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 import threading
 import time
-from collections import defaultdict
 from typing import Callable
 
 
@@ -19,7 +18,7 @@ class LoginRateLimiter:
         self.max_failures = max_failures
         self.window_seconds = window_seconds
         self._clock = clock
-        self._failures: dict[str, list[float]] = defaultdict(list)
+        self._failures: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
     def retry_after(self, key: str) -> int | None:
@@ -33,7 +32,9 @@ class LoginRateLimiter:
 
     def record_failure(self, key: str) -> None:
         with self._lock:
-            self._prune(key).append(self._clock())
+            recent = self._prune(key)
+            recent.append(self._clock())
+            self._failures[key] = recent
 
     def reset(self, key: str) -> None:
         with self._lock:
@@ -41,6 +42,9 @@ class LoginRateLimiter:
 
     def _prune(self, key: str) -> list[float]:
         cutoff = self._clock() - self.window_seconds
-        recent = [stamp for stamp in self._failures[key] if stamp > cutoff]
-        self._failures[key] = recent
+        recent = [stamp for stamp in self._failures.get(key, ()) if stamp > cutoff]
+        if recent:
+            self._failures[key] = recent
+        else:
+            self._failures.pop(key, None)       # keep memory proportional to *active* failures
         return recent

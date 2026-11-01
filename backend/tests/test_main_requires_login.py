@@ -46,3 +46,15 @@ def test_auth_endpoints_are_mounted(client):
     paths = {route.path for route in client.app.routes}
 
     assert {"/auth/signup", "/auth/login", "/auth/logout", "/auth/me"} <= paths
+
+
+def test_state_changing_requests_from_untrusted_origins_are_refused(client):
+    for path in ("/auth/logout", "/lesson/jobs", "/auth/login"):
+        response = client.post(path, json={}, headers={"Origin": "http://localhost:3000"})
+        assert response.status_code == 403, path
+
+
+def test_the_apps_own_origin_is_not_blocked(client):
+    response = client.post("/auth/logout", headers={"Origin": "http://localhost:5173"})
+
+    assert response.status_code == 204

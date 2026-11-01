@@ -159,3 +159,49 @@ def test_find_user_is_case_insensitive_and_none_when_missing(env):
 
     assert env.service.find_user(" ALICE@example.com") == user
     assert env.service.find_user("bob@example.com") is None
+
+
+class TrackingFactory:
+    """Wraps a session factory and counts open transactions/sessions."""
+
+    def __init__(self, real):
+        self.real = real
+        self.open = 0
+
+    def _track(self, manager):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def tracked():
+            self.open += 1
+            try:
+                with manager as session:
+                    yield session
+            finally:
+                self.open -= 1
+
+        return tracked()
+
+    def begin(self):
+        return self._track(self.real.begin())
+
+    def __call__(self):
+        return self._track(self.real())
+
+
+def test_password_hashing_never_runs_while_a_database_session_is_open(monkeypatch):
+    factory = TrackingFactory(make_session_factory())
+    service = AccountService(factory, LoginRateLimiter(clock=LimiterClock()))
+    seen = []
+    real_hash, real_verify = accounts.service.hash_password, accounts.service.verify_password
+    monkeypatch.setattr(accounts.service, "hash_password", lambda p: seen.append(("hash", factory.open)) or real_hash(p))
+    monkeypatch.setattr(accounts.service, "verify_password", lambda p, h: seen.append(("verify", factory.open)) or real_verify(p, h))
+
+    service.signup("alice@example.com", "password1")
+    service.login("alice@example.com", "password1", "1.1.1.1")
+    with pytest.raises(InvalidLogin):
+        service.login("nobody@example.com", "password1", "1.1.1.1")
+
+    assert {name for name, _ in seen} == {"hash", "verify"}
+    assert [name for name, _ in seen].count("verify") == 2
+    assert all(open_sessions == 0 for _, open_sessions in seen), seen

@@ -63,3 +63,21 @@ def test_keys_are_independent():
         limiter.record_failure("a")
 
     assert limiter.retry_after("b") is None
+
+
+def test_checking_many_clean_keys_does_not_grow_memory():
+    limiter, _ = make()
+
+    for number in range(1000):
+        assert limiter.retry_after(f"ip|user{number}@example.com") is None
+
+    assert len(limiter._failures) == 0
+
+
+def test_a_key_is_forgotten_once_its_failures_expire():
+    limiter, clock = make()
+    limiter.record_failure("k")
+    clock.now += 901
+
+    assert limiter.retry_after("k") is None
+    assert len(limiter._failures) == 0

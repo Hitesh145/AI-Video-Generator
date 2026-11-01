@@ -14,6 +14,18 @@ _RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
 _CHUNK_BYTES = 1024 * 1024
 
 
+def is_plain_relative_path(relative_path: str) -> bool:
+    """True only for paths made of ordinary segments.
+
+    Authorization looks at the first segment of the raw path, while the filesystem resolves
+    "..", so any segment that could change the meaning of the path after the check
+    (dot segments, empty segments, backslashes, drive letters, NUL) is refused outright.
+    """
+    if not relative_path or "\\" in relative_path or "\x00" in relative_path:
+        return False
+    return all(segment not in ("", ".", "..") and ":" not in segment for segment in relative_path.split("/"))
+
+
 class RangeNotSatisfiable(Exception):
     pass
 
@@ -69,6 +81,8 @@ def create_media_router(
         download: bool = False,
         range_header: str | None = Header(default=None, alias="range"),
     ):
+        if not is_plain_relative_path(relative_path):
+            raise HTTPException(status_code=404, detail="Not found")
         # Checked before touching the filesystem, so a denied file looks exactly like a missing one.
         if authorize is not None and not authorize(request, relative_path):
             raise HTTPException(status_code=404, detail="Not found")
