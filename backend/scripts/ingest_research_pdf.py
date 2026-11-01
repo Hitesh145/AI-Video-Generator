@@ -1,7 +1,7 @@
 """Ingest a research PDF into PostgreSQL and optionally embed its chunks.
 
 Run from backend/ with:
-    python -m scripts.ingest_research_pdf path/to/paper.pdf
+    python -m scripts.ingest_research_pdf path/to/paper.pdf --user-email you@example.com
 """
 
 from __future__ import annotations
@@ -9,7 +9,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from accounts.service import AccountService
 from rag.chunking import StructureAwareChunker
+from rag.database import build_session_factory
 from rag.document_ingestion import PDFIngestionService
 from rag.storage_service import RAGStorageService
 
@@ -17,6 +19,7 @@ from rag.storage_service import RAGStorageService
 def main() -> int:
     parser = argparse.ArgumentParser(description="Persist a research PDF for EduGen AI RAG.")
     parser.add_argument("pdf", type=Path, help="Path to the source research-paper PDF")
+    parser.add_argument("--user-email", required=True, help="Email of the account that owns this paper")
     parser.add_argument(
         "--no-embeddings",
         action="store_true",
@@ -30,10 +33,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    owner = AccountService(build_session_factory()).find_user(args.user_email)
+    if owner is None:
+        print(f"No account with email {args.user_email!r}. Sign up in the app first.")
+        return 1
+
     document = PDFIngestionService().ingest(args.pdf)
     chunks = StructureAwareChunker().chunk(document)
     storage = RAGStorageService.from_env()
-    result = storage.persist_document(args.pdf, document, chunks)
+    result = storage.persist_document(owner.user_id, args.pdf, document, chunks)
 
     print("Document ID:", result.document_id)
     print("Source SHA-256:", result.source_sha256)

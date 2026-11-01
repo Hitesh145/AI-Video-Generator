@@ -18,6 +18,7 @@ class RAGRepository(Protocol):
 
     def persist_bundle(
         self,
+        user_id: str,
         document: NormalizedDocument,
         chunks: list[CanonicalChunk],
         source_sha256: str,
@@ -29,7 +30,12 @@ class RAGRepository(Protocol):
     def save_embeddings(self, model_name: str, embeddings: Sequence[EmbeddingToStore]) -> int: ...
 
     def search_similar(
-        self, query_vector: Sequence[float], model_name: str, limit: int = 5
+        self,
+        user_id: str,
+        query_vector: Sequence[float],
+        model_name: str,
+        limit: int = 5,
+        document_id: str | None = None,
     ) -> list[SimilarityHit]: ...
 
 
@@ -74,6 +80,7 @@ class RAGStorageService:
 
     def persist_document(
         self,
+        user_id: str,
         source_pdf: str | Path,
         document: NormalizedDocument,
         chunks: list[CanonicalChunk],
@@ -85,7 +92,7 @@ class RAGStorageService:
         self._validate_bundle(document, chunks)
         source_digest = sha256_file(source_path)
 
-        existing_id = self.repository.find_document_by_sha256(source_digest)
+        existing_id = self.repository.find_document_by_sha256(user_id, source_digest)
         if existing_id:
             return PersistenceResult(
                 document_id=existing_id,
@@ -100,13 +107,13 @@ class RAGStorageService:
         asset_bundle = self.asset_store.store_bundle(source_path, document, source_digest)
         try:
             stored_document_id, created = self.repository.persist_bundle(
-                document, chunks, source_digest, asset_bundle
+                user_id, document, chunks, source_digest, asset_bundle
             )
         except Exception:
             # A competing process may have stored this hash while assets were copied.
             # Do not delete files if a committed document now references the same hash.
             try:
-                concurrent_id = self.repository.find_document_by_sha256(source_digest)
+                concurrent_id = self.repository.find_document_by_sha256(user_id, source_digest)
             except Exception:
                 concurrent_id = None
             if not concurrent_id:
@@ -165,8 +172,10 @@ class RAGStorageService:
             inserted += self.repository.save_embeddings(provider.model_name, embeddings)
         return inserted
 
-    def search_similar(self, query: str, limit: int = 5) -> list[SimilarityHit]:
-        """Perform the Phase 3 vector-search smoke path; ranking/expansion is Phase 4."""
+    def search_similar(
+        self, user_id: str, query: str, limit: int = 5, document_id: str | None = None
+    ) -> list[SimilarityHit]:
+        """Vector search over the user's papers (or one of them); ranking/expansion comes later."""
         provider = self.embedding_provider or GeminiEmbeddingService()
         if provider.dimensions != EMBEDDING_DIMENSIONS:
             raise ValueError(
@@ -176,7 +185,7 @@ class RAGStorageService:
         vector = provider.embed_query(query)
         if len(vector) != EMBEDDING_DIMENSIONS:
             raise ValueError("Query embedding dimensions do not match the database schema.")
-        return self.repository.search_similar(vector, provider.model_name, limit)
+        return self.repository.search_similar(user_id, vector, provider.model_name, limit, document_id)
 
     @staticmethod
     def _validate_bundle(document: NormalizedDocument, chunks: list[CanonicalChunk]) -> None:

@@ -30,14 +30,17 @@ class PostgresRAGRepository:
     def __init__(self, session_factory: sessionmaker) -> None:
         self._session_factory = session_factory
 
-    def find_document_by_sha256(self, source_sha256: str) -> str | None:
+    def find_document_by_sha256(self, user_id: str, source_sha256: str) -> str | None:
         with self._session_factory() as session:
             return session.scalar(
-                select(RAGDocument.document_id).where(RAGDocument.source_sha256 == source_sha256)
+                select(RAGDocument.document_id).where(
+                    RAGDocument.user_id == user_id, RAGDocument.source_sha256 == source_sha256
+                )
             )
 
     def persist_bundle(
         self,
+        user_id: str,
         document,
         chunks,
         source_sha256: str,
@@ -45,18 +48,22 @@ class PostgresRAGRepository:
     ) -> tuple[str, bool]:
         """Atomically store canonical metadata, blocks, assets, chunks and source links.
 
-        Returns ``(document_id, created)``. A repeated source PDF hash is treated
-        as idempotent and returns the already stored document.
+        Returns ``(document_id, created)``. A repeated source PDF hash for the same
+        user is treated as idempotent and returns the already stored document;
+        another user's copy of the same PDF is a separate document.
         """
         with self._session_factory.begin() as session:
             existing_id = session.scalar(
-                select(RAGDocument.document_id).where(RAGDocument.source_sha256 == source_sha256)
+                select(RAGDocument.document_id).where(
+                    RAGDocument.user_id == user_id, RAGDocument.source_sha256 == source_sha256
+                )
             )
             if existing_id:
                 return str(existing_id), False
 
             row = RAGDocument(
                 document_id=document.document_id,
+                user_id=user_id,
                 source_sha256=source_sha256,
                 source_filename=document.source_filename,
                 source_asset_key=asset_bundle.source_pdf_key,
@@ -69,6 +76,7 @@ class PostgresRAGRepository:
                 warnings=list(document.warnings) + list(asset_bundle.warnings),
             )
             session.add(row)
+            session.flush()   # the models declare foreign keys but no relationships, so insert order is ours to enforce
 
             path_key_map = dict(asset_bundle.source_path_to_key)
             image_keys_by_block = dict(asset_bundle.image_keys_by_block_id)
@@ -112,6 +120,7 @@ class PostgresRAGRepository:
                 ]
             )
 
+            session.flush()
             session.add_all(
                 [
                     RAGDocumentAsset(
@@ -129,6 +138,7 @@ class PostgresRAGRepository:
                 ]
             )
 
+            session.flush()
             source_link_rows = []
             chunk_rows = []
             for chunk in chunks:
@@ -186,6 +196,7 @@ class PostgresRAGRepository:
                         seen_links.add(link)
 
             session.add_all(chunk_rows)
+            session.flush()
             session.add_all(source_link_rows)
 
         return document.document_id, True
@@ -273,16 +284,19 @@ class PostgresRAGRepository:
             },
         )
         with self._session_factory.begin() as session:
-            result = session.execute(statement)
-            return max(0, int(result.rowcount or 0))
+            session.execute(statement)
+        # An upsert inserts or updates every submitted row; rowcount is not reliable across drivers.
+        return len(rows)
 
     def search_similar(
         self,
+        user_id: str,
         query_vector: Sequence[float],
         model_name: str,
         limit: int = 5,
+        document_id: str | None = None,
     ) -> list[SimilarityHit]:
-        """Run basic cosine-nearest-neighbor search; richer retrieval is Phase 4."""
+        """Cosine-nearest-neighbor search over one user's papers, or one of their papers."""
         if len(query_vector) != EMBEDDING_DIMENSIONS:
             raise ValueError(
                 f"Query vector has {len(query_vector)} dimensions; expected {EMBEDDING_DIMENSIONS}."
@@ -295,12 +309,15 @@ class PostgresRAGRepository:
             .join(RAGChunkEmbedding, RAGChunkEmbedding.chunk_id == RAGDocumentChunk.chunk_id)
             .join(RAGDocument, RAGDocument.document_id == RAGDocumentChunk.document_id)
             .where(
+                RAGDocument.user_id == user_id,
                 RAGChunkEmbedding.model_name == model_name,
                 RAGChunkEmbedding.dimensions == EMBEDDING_DIMENSIONS,
             )
             .order_by(distance)
             .limit(limit)
         )
+        if document_id is not None:
+            statement = statement.where(RAGDocument.document_id == document_id)
         with self._session_factory() as session:
             rows = session.execute(statement).all()
         return [

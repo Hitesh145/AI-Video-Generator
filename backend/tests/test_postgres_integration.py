@@ -14,7 +14,13 @@ from alembic.config import Config
 from dotenv import load_dotenv
 from sqlalchemy import text
 
-from rag.database import build_engine, check_database
+from accounts.service import AccountService
+from rag.asset_store import ManagedAssetStore
+from rag.database import build_engine, build_session_factory, check_database
+from rag.pg_repository import PostgresRAGRepository
+from rag.storage_config import EMBEDDING_DIMENSIONS
+from rag.storage_service import RAGStorageService
+from test_rag_storage import make_fixture
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -107,3 +113,53 @@ def test_upgrade_refuses_to_guess_an_owner_for_existing_documents(monkeypatch):
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM rag_documents"))
         engine.dispose()
+
+
+class ConstantEmbedder:
+    """Every text gets the same vector: these tests check who can see what, not ranking."""
+
+    model_name = "test-embedding"
+    dimensions = EMBEDDING_DIMENSIONS
+
+    def _vector(self):
+        return [1.0] + [0.0] * (EMBEDDING_DIMENSIONS - 1)
+
+    def embed_prepared_text(self, formatted_text):
+        return self._vector()
+
+    def embed_query(self, query):
+        return self._vector()
+
+
+def test_two_users_store_the_same_paper_and_search_stays_private(migrated_engine, tmp_path):
+    factory = build_session_factory(migrated_engine)
+    accounts = AccountService(factory)
+    alice, _ = accounts.signup("alice@example.com", "password1")
+    bob, _ = accounts.signup("bob@example.com", "password1")
+    carol, _ = accounts.signup("carol@example.com", "password1")
+    service = RAGStorageService(
+        PostgresRAGRepository(factory), ManagedAssetStore(tmp_path / "assets"), ConstantEmbedder()
+    )
+
+    document_ids = {}
+    stored = {}
+    for name, user in (("alice", alice), ("bob", bob)):
+        (tmp_path / name).mkdir()
+        pdf_path, _, document, chunk = make_fixture(tmp_path / name)     # identical PDF bytes for both
+        result = service.persist_document(user.user_id, pdf_path, document, [chunk])
+        assert result.already_exists is False
+        assert service.generate_missing_embeddings(result.document_id) == 1
+        document_ids[name] = result.document_id
+        stored[name] = (user, pdf_path, document, chunk)
+
+    assert document_ids["alice"] != document_ids["bob"]
+    user, pdf_path, document, chunk = stored["alice"]
+    again = service.persist_document(user.user_id, pdf_path, document, [chunk])
+    assert again.already_exists is True and again.document_id == document_ids["alice"]
+
+    for name, user in (("alice", alice), ("bob", bob)):
+        hits = service.search_similar(user.user_id, "anything", limit=10)
+        assert {hit.document_id for hit in hits} == {document_ids[name]}
+    assert service.search_similar(alice.user_id, "anything", document_id=document_ids["alice"])
+    assert service.search_similar(alice.user_id, "anything", document_id=document_ids["bob"]) == []
+    assert service.search_similar(carol.user_id, "anything") == []

@@ -81,18 +81,19 @@ def make_fixture(tmp_path: Path):
 
 class FakeRepository:
     def __init__(self):
-        self.existing_by_hash: dict[str, str] = {}
+        self.existing_by_hash: dict[tuple[str, str], str] = {}
+        self.last_search: tuple | None = None
         self.persisted: list[tuple] = []
         self.work_items: list[EmbeddingWorkItem] = []
         self.saved_embeddings: list[tuple[str, list[EmbeddingToStore]]] = []
         self.hits: list[SimilarityHit] = []
 
-    def find_document_by_sha256(self, digest):
-        return self.existing_by_hash.get(digest)
+    def find_document_by_sha256(self, user_id, digest):
+        return self.existing_by_hash.get((user_id, digest))
 
-    def persist_bundle(self, document, chunks, source_sha256, asset_bundle):
-        self.persisted.append((document, chunks, source_sha256, asset_bundle))
-        self.existing_by_hash[source_sha256] = document.document_id
+    def persist_bundle(self, user_id, document, chunks, source_sha256, asset_bundle):
+        self.persisted.append((user_id, document, chunks, source_sha256, asset_bundle))
+        self.existing_by_hash[(user_id, source_sha256)] = document.document_id
         return document.document_id, True
 
     def chunks_missing_embeddings(self, document_id, model_name):
@@ -102,7 +103,8 @@ class FakeRepository:
         self.saved_embeddings.append((model_name, list(embeddings)))
         return len(embeddings)
 
-    def search_similar(self, query_vector, model_name, limit=5):
+    def search_similar(self, user_id, query_vector, model_name, limit=5, document_id=None):
+        self.last_search = (user_id, document_id, limit)
         return self.hits[:limit]
 
 
@@ -175,8 +177,8 @@ def test_persist_document_copies_assets_and_is_idempotent(tmp_path):
     repo = FakeRepository()
     service = RAGStorageService(repo, ManagedAssetStore(tmp_path / "managed"))
 
-    first = service.persist_document(pdf_path, document, [chunk])
-    second = service.persist_document(pdf_path, document, [chunk])
+    first = service.persist_document("user-1", pdf_path, document, [chunk])
+    second = service.persist_document("user-1", pdf_path, document, [chunk])
 
     assert first.already_exists is False
     assert first.block_count == 1 and first.chunk_count == 1 and first.asset_count == 2
@@ -189,7 +191,7 @@ def test_persist_document_rejects_chunk_for_different_document(tmp_path):
     chunk.document_id = str(uuid4())
     service = RAGStorageService(FakeRepository(), ManagedAssetStore(tmp_path / "managed"))
     with pytest.raises(ValueError, match="belongs to"):
-        service.persist_document(pdf_path, document, [chunk])
+        service.persist_document("user-1", pdf_path, document, [chunk])
 
 
 def test_persist_document_rejects_missing_source_block(tmp_path):
@@ -197,7 +199,7 @@ def test_persist_document_rejects_missing_source_block(tmp_path):
     chunk.source_refs[0].block_id = str(uuid4())
     service = RAGStorageService(FakeRepository(), ManagedAssetStore(tmp_path / "managed"))
     with pytest.raises(ValueError, match="absent from the document"):
-        service.persist_document(pdf_path, document, [chunk])
+        service.persist_document("user-1", pdf_path, document, [chunk])
 
 
 def test_embedding_input_format_for_gemini_embedding_2():
@@ -278,7 +280,7 @@ def test_storage_service_search_uses_query_embedding(tmp_path):
         section_path=["AI"], cosine_distance=0.1,
     )]
     service = RAGStorageService(repo, ManagedAssetStore(tmp_path / "managed"), embedder)
-    hits = service.search_similar("what is AI?", limit=1)
+    hits = service.search_similar("user-1", "what is AI?", limit=1)
     assert len(hits) == 1 and hits[0].similarity_score == pytest.approx(0.9)
     assert embedder.inputs == ["what is AI?"]
 
@@ -311,3 +313,27 @@ def test_vector_model_schema_is_available_when_pgvector_is_installed():
     assert "rag_document_chunks" in Base.metadata.tables
     assert "rag_chunk_source_blocks" in Base.metadata.tables
     assert RAGChunkEmbedding.__table__.c.embedding.type.dim == EMBEDDING_DIMENSIONS
+
+
+def test_the_same_pdf_is_stored_separately_for_each_user(tmp_path):
+    pdf_path, _, document, chunk = make_fixture(tmp_path)
+    repo = FakeRepository()
+    service = RAGStorageService(repo, ManagedAssetStore(tmp_path / "managed"))
+
+    first = service.persist_document("user-1", pdf_path, document, [chunk])
+    second = service.persist_document("user-2", pdf_path, document, [chunk])
+    again = service.persist_document("user-1", pdf_path, document, [chunk])
+
+    assert first.already_exists is False
+    assert second.already_exists is False
+    assert again.already_exists is True
+    assert [entry[0] for entry in repo.persisted] == ["user-1", "user-2"]
+
+
+def test_search_passes_the_user_and_document_scope_through(tmp_path):
+    repo = FakeRepository()
+    service = RAGStorageService(repo, ManagedAssetStore(tmp_path / "managed"), FakeEmbedder())
+
+    service.search_similar("user-1", "what is AI?", limit=3, document_id="doc-9")
+
+    assert repo.last_search == ("user-1", "doc-9", 3)
