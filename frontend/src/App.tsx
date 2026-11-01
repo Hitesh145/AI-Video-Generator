@@ -12,7 +12,7 @@ function App({ user, onLogout }: { user: AuthUser; onLogout: () => Promise<void>
         <Layout user={user} onLogout={onLogout} active={route.page === "studio" ? "studio" : "papers"}>
             {route.page === "studio" && <StudioPage />}
             {route.page === "papers" && <PapersPage />}
-            {route.page === "paper" && <PaperDetailPage paperId={route.paperId} />}
+            {route.page === "paper" && <PaperDetailPage key={route.paperId} paperId={route.paperId} />}
         </Layout>
     );
 }

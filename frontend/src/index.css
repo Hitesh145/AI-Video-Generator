@@ -79,3 +79,27 @@ button, textarea { font: inherit; }
 .nav-link { padding: 8px 14px; border: 1px solid transparent; color: #899080; text-decoration: none; font: 12px "DM Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
 .nav-link:hover { color: #dce1ce; border-color: #414a3c; }
 .nav-link.active { color: #111310; background: #b5d85d; border-color: #b5d85d; }
+.upload-box { display: flex; flex-direction: column; gap: 8px; margin-top: 34px; padding: 34px; border: 1px dashed #5b6652; background: #191c17; color: #899080; text-align: center; cursor: pointer; }
+.upload-box strong { color: #e6eadc; font-size: 16px; font-weight: 500; }
+.upload-box span { font: 11px "DM Mono", monospace; letter-spacing: .05em; }
+.upload-box:hover, .upload-box.dragging { border-color: #b5d85d; background: #1d211a; }
+.notice-message { margin: 14px 0 0; color: #b5d85d; font: 12px "DM Mono", monospace; }
+.paper-list { margin: 0; padding: 0; list-style: none; }
+.paper-row { display: flex; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid #353c31; border-top-width: 0; background: #191c17; }
+.paper-row:first-child { border-top-width: 1px; }
+.paper-main { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
+.paper-title { color: #e6eadc; font-size: 15px; font-weight: 500; text-decoration: none; overflow-wrap: anywhere; }
+a.paper-title:hover { color: #b5d85d; }
+.paper-main small, .paper-detail { color: #899080; font: 11px "DM Mono", monospace; }
+.paper-detail.failed { color: #ee927b; }
+.status-chip { display: inline-block; padding: 4px 9px; border: 1px solid #424b3d; color: #899080; font: 10px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.status-parsing, .status-chunking, .status-storing, .status-embedding { border-color: #b5d85d; color: #b5d85d; }
+.status-ready { border-color: #71884b; color: #b5d85d; background: #202a1b; }
+.status-failed { border-color: #ee927b; color: #ee927b; }
+.back-link { color: #899080; font: 11px "DM Mono", monospace; text-decoration: none; }
+.back-link:hover { color: #b5d85d; }
+.report-section { margin-top: 40px; padding: 26px 30px; border: 1px solid #353c31; background: #191c17; }
+.report-section h2 { margin: 0 0 16px; font-size: 19px; font-weight: 500; }
+.report-stats { display: flex; gap: 28px; margin: 0 0 16px; padding: 0; list-style: none; color: #899080; font: 12px "DM Mono", monospace; }
+.report-stats strong { color: #e6eadc; font-size: 22px; font-weight: 500; margin-right: 4px; }
+.report-warnings { margin: 0; padding-left: 18px; color: #d8c27f; font: 12px "DM Mono", monospace; line-height: 1.7; }
