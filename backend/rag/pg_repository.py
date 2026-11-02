@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Sequence
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import sessionmaker
 
@@ -21,7 +22,13 @@ from rag.db_models import (
 )
 from rag.embedding_service import prepare_document_embedding_text
 from rag.storage_config import EMBEDDING_DIMENSIONS
-from rag.storage_schema import EmbeddingToStore, EmbeddingWorkItem, SimilarityHit
+from rag.storage_schema import EmbeddingToStore, EmbeddingWorkItem, KeywordHit, SimilarityHit
+
+# Words only (letters and digits in any script). Nothing else from a question ever reaches the tsquery.
+_QUERY_WORD = re.compile(r"[^\W_]+")
+MAX_QUERY_TERMS = 64
+# Must match the expression of the GIN index ix_rag_chunks_fts (migration 0004) exactly.
+PASSAGE_TSVECTOR = "to_tsvector('english', c.context_prefix || ' ' || c.text)"
 
 
 class PostgresRAGRepository:
@@ -334,4 +341,49 @@ class PostgresRAGRepository:
                 cosine_distance=float(distance_value),
             )
             for chunk, document, distance_value in rows
+        ]
+
+    def keyword_search(self, user_id: str, document_id: str, query: str, limit: int = 20) -> list[KeywordHit]:
+        """Passages of one of the user's papers that contain the question's words, best match first.
+
+        The words are OR-ed (a natural question rarely has every word in one passage) and
+        English stop words are ignored. A question with no usable words finds nothing.
+        """
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        words = list(dict.fromkeys(word.lower() for word in _QUERY_WORD.findall(query)))[:MAX_QUERY_TERMS]
+        if not words:
+            return []
+
+        statement = text(
+            f"""
+            SELECT c.chunk_id, c.document_id, c.text, c.context_prefix, c.section_path,
+                   c.page_start, c.page_end,
+                   ts_rank_cd({PASSAGE_TSVECTOR}, to_tsquery('english', :tsquery)) AS rank_score
+            FROM rag_document_chunks c
+            JOIN rag_documents d ON d.document_id = c.document_id
+            WHERE d.user_id = :user_id
+              AND c.document_id = :document_id
+              AND {PASSAGE_TSVECTOR} @@ to_tsquery('english', :tsquery)
+            ORDER BY rank_score DESC, c.sequence_index
+            LIMIT :limit
+            """
+        )
+        with self._session_factory() as session:
+            rows = session.execute(
+                statement,
+                {"tsquery": " | ".join(words), "user_id": user_id, "document_id": document_id, "limit": limit},
+            ).all()
+        return [
+            KeywordHit(
+                chunk_id=row.chunk_id,
+                document_id=row.document_id,
+                text=row.text,
+                context_prefix=row.context_prefix,
+                section_path=list(row.section_path),
+                page_start=row.page_start,
+                page_end=row.page_end,
+                rank_score=float(row.rank_score),
+            )
+            for row in rows
         ]

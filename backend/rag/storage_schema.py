@@ -62,3 +62,16 @@ class StoredChunkInput:
         if self.context_prefix and self.text:
             return f"{self.context_prefix}\n\n{self.text}"
         return self.context_prefix or self.text
+
+
+@dataclass(frozen=True)
+class KeywordHit:
+    chunk_id: str
+    document_id: str
+    text: str
+    context_prefix: str
+    section_path: list[str]
+    page_start: int | None
+    page_end: int | None
+    rank_score: float
+
