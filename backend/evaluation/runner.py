@@ -149,15 +149,20 @@ def render_markdown(results: Sequence[EvaluationResult]) -> str:
         absent = [q for q in result.questions if q.kind == "absent"]
         lines += ["", "How strongly the best passage matches (min / median / max), and the suggested "
                       "\"covered by the paper\" threshold:", "",
-                  "| mode | answerable questions | questions the paper cannot answer | suggested threshold | accuracy |",
-                  "|---|---|---|---|---|"]
+                  "| mode | answerable questions | questions the paper cannot answer | suggested threshold | answerable kept | absent rejected | accuracy (do-nothing baseline) |",
+                  "|---|---|---|---|---|---|---|"]
         for mode in modes:
             suggestion = result.threshold_by_mode.get(mode)
-            threshold = f"{suggestion.threshold:.3f}" if suggestion else "n/a"
-            accuracy = f"{suggestion.accuracy:.2f}" if suggestion else "n/a"
+            if suggestion is None:
+                threshold = kept = rejected = accuracy = "n/a"
+            else:
+                threshold = "below every score (separates nothing)" if suggestion.keeps_everything else f"{suggestion.threshold:.3f}"
+                kept = f"{suggestion.answerable_kept}/{suggestion.answerable_total}"
+                rejected = f"{suggestion.absent_rejected}/{suggestion.absent_total}"
+                accuracy = f"{suggestion.accuracy:.2f} ({suggestion.baseline_accuracy:.2f})"
             lines.append(
                 f"| {mode} | {_range([q.best_score_by_mode[mode] or 0.0 for q in answerable])} "
-                f"| {_range([q.best_score_by_mode[mode] or 0.0 for q in absent])} | {threshold} | {accuracy} |"
+                f"| {_range([q.best_score_by_mode[mode] or 0.0 for q in absent])} | {threshold} | {kept} | {rejected} | {accuracy} |"
             )
 
         missed = [q for q in answerable if all(rank is None for rank in q.rank_by_mode.values())]

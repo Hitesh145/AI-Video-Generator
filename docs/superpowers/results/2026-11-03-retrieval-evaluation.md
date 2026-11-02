@@ -2,7 +2,7 @@
 
 Plan: `docs/superpowers/plans/2026-11-03-retrieval-evaluation.md`. Spec: `docs/superpowers/specs/2026-11-01-paper-videos-design.md`.
 
-**What was measured.** For three papers, 12 questions each that the paper can answer and 3 that it cannot, we asked: does the search put a passage containing the answer in the top few results? Three searches were compared: *vector* (meaning, Gemini embeddings), *keyword* (PostgreSQL full-text) and *hybrid* (both, merged by reciprocal rank fusion). A passage counts as the answer if its text contains one of the short phrases listed for the question; every phrase was checked against the stored text before scoring.
+**What was measured.** For three papers, 12 questions each that the paper can answer and 3 that it cannot, we asked: does the search put a passage containing the answer in the top few results? Three searches were compared: *vector* (meaning, Gemini embeddings), *keyword* (PostgreSQL full-text) and *hybrid* (both, merged by reciprocal rank fusion). A passage counts as the answer if its text contains one of the short phrases listed for the question; every phrase was checked, before scoring, to occur inside a single stored passage (scoring looks at one passage at a time).
 
 **Papers:** the owner's sample paper on AI (`sample`, local only, 5 pages), "Attention Is All You Need" (`attention`, 15 pages, tables and equations) and "Deep Residual Learning for Image Recognition" (`resnet`, 12 pages, figures and tables). Copies are stored under the account `evaluation@edugen.local` in the development database and are reused by later plans; they appear in nobody's library. The two arXiv PDFs are pinned by SHA-256 in `backend/evaluation/papers.json`.
 
@@ -18,15 +18,15 @@ Recall@5 is the share of questions whose answer passage appears among the first 
 
 ## Reading the numbers
 
-**(a) Best mode.** Vector search, on every paper. Its recall@5 is 1.00, 1.00 and 0.92 (sample, attention, resnet) and it also puts the right passage first more often (recall@1 0.83, 0.75, 0.58). Hybrid matches it at recall@5 and recall@8 but is slightly lower at rank 1 and in MRR on two papers. Keyword alone is clearly the weakest (recall@5 0.92, 0.83, 0.75).
+**(a) Best mode.** Vector search, on every paper. Its recall@5 is 1.00, 1.00 and 0.92 (sample, attention, resnet) and it also puts the right passage first more often (recall@1 0.83, 0.75, 0.58). Hybrid matches it at recall@5 and recall@8 but is slightly lower in MRR on two papers and at rank 1 on resnet. Keyword alone is clearly the weakest (recall@5 0.92, 0.83, 0.75).
 
-**(b) Does adding keyword search help?** Not on these papers. Hybrid ties vector at recall@5/@8 and is a little worse at the very top (MRR 0.85 vs 0.88 on attention, 0.66 vs 0.69 on resnet; one question's rank each, which is within noise for 12 questions). The weaker keyword list pulls good vector results down a place or two. It does not hurt where it matters for generation (the top 5-8), so keeping hybrid available costs little, but there is no evidence yet that it earns its place. Keyword search is where exact tokens such as numbers or identifiers should matter; the numeric questions here (BLEU 28.4, 3.57%, 20000 engineers) were all found by vector search too.
+**(b) Does adding keyword search help?** Not on these papers. Hybrid ties vector at recall@5/@8 and is a little worse at the very top (MRR 0.85 vs 0.88 on attention, 0.66 vs 0.69 on resnet; one question's rank each, which is within noise for 12 questions). The weaker keyword list pulls good vector results down a place or two. It does not hurt where it matters for generation (the top 5-8), so keeping hybrid available costs little, but there is no evidence yet that it earns its place. Keyword search is where exact tokens such as numbers or identifiers should matter, but its query splitting turns "28.4" into the words "28" and "4", which weakens exactly that case; the numeric questions here (BLEU 28.4, 3.57%, 20000 engineers) were all found by vector search anyway.
 
 **(c) What fails.** Only one question is missed by every mode in the top 8: **resnet-11**, "What went wrong with the network that had more than a thousand layers?" The answer passage says "1202-layer network ... overfitting"; the question says "more than a thousand layers". The words do not match ("thousand" vs "1202"), and ResNet's many other passages about depth outrank it. This is a vocabulary and vagueness failure, not a format failure. Keyword search alone also fails the whole "future work" category on attention (0.00) and "results" on resnet (0.33); there the question uses different words than the paper ("do next" vs "plan to extend"), which meaning-based search bridges and word matching cannot.
 Equations were **not** tested: in the stored text the formula regions carry no text at all (for example "We compute the matrix of outputs as:" is followed by nothing), so no phrase from an equation can be validated. This matches the design (equations are shown as pictures), but it means retrieval can currently find the sentence around an equation, never the equation itself.
 Answers spread over more than one section (attention-07, attention-10, resnet-10, sample-10, sample-12) were all found at recall@5 by vector and hybrid, because the phrases accept either section; this does not prove the generator would see both halves.
 
-**(d) The "not in this paper" threshold.** The suggested cut-offs on the best-passage similarity (vector) are 0.613 (sample), 0.623 (attention) and 0.707 (resnet), with accuracy 0.93, 0.87 and 0.93 in separating answerable from absent questions. The two groups overlap in every paper: absent questions were deliberately about a nearby topic, so a related passage still matches (for example attention: absent questions reach 0.73, answerable ones start at 0.65). The suggested value also moves by about 0.1 between papers. Keyword scores do not separate the groups reliably (accuracy 0.80-0.93, thresholds 0.10 to 1.10). **Confidence is low**: 9 absent questions in total, the cut-off is fitted on the same questions it is scored on (optimistic), and the figures are paper-dependent. A single fixed number should not decide alone whether a question is "not in this paper". It is useful as a warning signal: a low best-match similarity should trigger the claim check of the next project, not a silent answer.
+**(d) The "not in this paper" threshold.** The suggested cut-offs on the best-passage similarity (vector) are 0.613 (sample), 0.623 (attention) and 0.707 (resnet). Read the accuracy figures against their floor: with 12 answerable and 3 absent questions, "call everything covered" is already right 80% of the time. Vector reaches 0.93, 0.87 and 0.93, which means it correctly rejects **2 of 3, 1 of 3 and 2 of 3** absent questions while keeping all 12 answerable ones; on attention that is one question better than doing nothing. Keyword scores separate nothing on attention and resnet (the best cut-off is "below every score", accuracy 0.80 = the floor). The groups overlap in every paper: absent questions were deliberately about a nearby topic, so a related passage still matches (attention: absent questions reach 0.73, answerable ones start at 0.65). The suggested value also moves by about 0.1 between papers. The cut-off is also chosen to maximise plain accuracy, which favours "covered" when answerable questions outnumber absent ones; the design says to lean towards "not covered" when unsure, so a production cut-off should be chosen differently (for example require every absent question to be rejected). **Confidence is low**: 9 absent questions in total, and the cut-off is fitted on the same questions it is scored on (optimistic). A single fixed number must not decide alone whether a question is "not in this paper". It is useful as a warning signal: a low best-match similarity should trigger the claim check of the next project, not a silent answer.
 
 **(e) Recommendation for the next plan.**
 1. Use **vector search** as the default evidence retriever and pass the top 5-8 passages on; keep hybrid switchable for the comparison below rather than the default.
@@ -77,11 +77,11 @@ Recall@5 by question category:
 
 How strongly the best passage matches (min / median / max), and the suggested "covered by the paper" threshold:
 
-| mode | answerable questions | questions the paper cannot answer | suggested threshold | accuracy |
-|---|---|---|---|---|
-| vector | 0.62 / 0.73 / 0.79 | 0.60 / 0.61 / 0.70 | 0.613 | 0.93 |
-| keyword | 0.60 / 1.10 / 2.60 | 0.10 / 0.30 / 1.40 | 0.450 | 0.93 |
-| hybrid | 0.62 / 0.73 / 0.79 | 0.60 / 0.61 / 0.70 | 0.613 | 0.93 |
+| mode | answerable questions | questions the paper cannot answer | suggested threshold | answerable kept | absent rejected | accuracy (do-nothing baseline) |
+|---|---|---|---|---|---|---|
+| vector | 0.62 / 0.73 / 0.79 | 0.60 / 0.61 / 0.70 | 0.613 | 12/12 | 2/3 | 0.93 (0.80) |
+| keyword | 0.60 / 1.10 / 2.60 | 0.10 / 0.30 / 1.40 | 0.450 | 12/12 | 2/3 | 0.93 (0.80) |
+| hybrid | 0.62 / 0.73 / 0.79 | 0.60 / 0.61 / 0.70 | 0.613 | 12/12 | 2/3 | 0.93 (0.80) |
 
 Answerable questions no mode found in the top 8:
 
@@ -111,11 +111,11 @@ Recall@5 by question category:
 
 How strongly the best passage matches (min / median / max), and the suggested "covered by the paper" threshold:
 
-| mode | answerable questions | questions the paper cannot answer | suggested threshold | accuracy |
-|---|---|---|---|---|
-| vector | 0.65 / 0.78 / 0.82 | 0.60 / 0.70 / 0.73 | 0.623 | 0.87 |
-| keyword | 0.10 / 2.20 / 3.40 | 0.50 / 1.00 / 1.50 | 0.100 | 0.80 |
-| hybrid | 0.65 / 0.78 / 0.82 | 0.59 / 0.70 / 0.73 | 0.619 | 0.87 |
+| mode | answerable questions | questions the paper cannot answer | suggested threshold | answerable kept | absent rejected | accuracy (do-nothing baseline) |
+|---|---|---|---|---|---|---|
+| vector | 0.65 / 0.78 / 0.82 | 0.60 / 0.70 / 0.73 | 0.623 | 12/12 | 1/3 | 0.87 (0.80) |
+| keyword | 0.10 / 2.20 / 3.40 | 0.50 / 1.00 / 1.50 | below every score (separates nothing) | 12/12 | 0/3 | 0.80 (0.80) |
+| hybrid | 0.65 / 0.78 / 0.82 | 0.59 / 0.70 / 0.73 | 0.619 | 12/12 | 1/3 | 0.87 (0.80) |
 
 Answerable questions no mode found in the top 8:
 
@@ -145,11 +145,11 @@ Recall@5 by question category:
 
 How strongly the best passage matches (min / median / max), and the suggested "covered by the paper" threshold:
 
-| mode | answerable questions | questions the paper cannot answer | suggested threshold | accuracy |
-|---|---|---|---|---|
-| vector | 0.71 / 0.78 / 0.85 | 0.67 / 0.71 / 0.73 | 0.707 | 0.93 |
-| keyword | 1.10 / 2.00 / 2.80 | 1.30 / 2.10 / 2.20 | 1.100 | 0.80 |
-| hybrid | 0.71 / 0.78 / 0.85 | 0.67 / 0.71 / 0.71 | 0.707 | 0.93 |
+| mode | answerable questions | questions the paper cannot answer | suggested threshold | answerable kept | absent rejected | accuracy (do-nothing baseline) |
+|---|---|---|---|---|---|---|
+| vector | 0.71 / 0.78 / 0.85 | 0.67 / 0.71 / 0.73 | 0.707 | 12/12 | 2/3 | 0.93 (0.80) |
+| keyword | 1.10 / 2.00 / 2.80 | 1.30 / 2.10 / 2.20 | below every score (separates nothing) | 12/12 | 0/3 | 0.80 (0.80) |
+| hybrid | 0.71 / 0.78 / 0.85 | 0.67 / 0.71 / 0.71 | 0.707 | 12/12 | 2/3 | 0.93 (0.80) |
 
 Answerable questions no mode found in the top 8:
 

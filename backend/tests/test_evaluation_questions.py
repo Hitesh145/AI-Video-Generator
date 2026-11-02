@@ -66,7 +66,7 @@ QUESTION_SET = QuestionSet(paper="p", questions=[
 
 
 def test_find_problems_names_every_phrase_that_is_not_in_the_paper():
-    problems = find_problems(QUESTION_SET, "Scaled dot-product attention divides by sqrt(d_k).")
+    problems = find_problems(QUESTION_SET, ["Scaled dot-product attention divides by sqrt(d_k)."])
 
     assert len(problems) == 2
     assert any("q2" in p and "multi-head attention" in p for p in problems)
@@ -76,10 +76,19 @@ def test_find_problems_names_every_phrase_that_is_not_in_the_paper():
 def test_find_problems_is_clean_when_every_phrase_occurs():
     text = "Scaled dot-product attention ... Multi-Head\nAttention uses 8 attention heads."
 
-    assert find_problems(QUESTION_SET, text) == []
+    assert find_problems(QUESTION_SET, [text]) == []
 
 
 def test_find_problems_ignores_absent_questions():
     only_absent = QuestionSet(paper="p", questions=[Question(id="a1", kind="absent", category="absent", question="Anything?")])
 
-    assert find_problems(only_absent, "any text at all") == []
+    assert find_problems(only_absent, ["any text at all"]) == []
+
+
+def test_find_problems_rejects_a_phrase_that_straddles_two_passages():
+    # Scoring looks inside one passage at a time, so a phrase split by a passage boundary could never be found.
+    passages = ["Scaled dot-product", "attention divides by sqrt(d_k). Multi-head attention and attention heads."]
+
+    problems = find_problems(QUESTION_SET, passages)
+
+    assert len(problems) == 1 and "q1" in problems[0]

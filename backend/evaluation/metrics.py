@@ -54,6 +54,16 @@ def mean_reciprocal_rank(ranks: Sequence[int | None]) -> float:
 class ThresholdSuggestion:
     threshold: float          # a topic counts as covered when its best score is >= threshold
     accuracy: float           # share of the given questions this cut-off classifies correctly
+    answerable_kept: int      # answerable questions at or above the cut-off (called "covered")
+    answerable_total: int
+    absent_rejected: int      # questions the paper cannot answer that fall below the cut-off
+    absent_total: int
+    keeps_everything: bool    # the cut-off is below every observed score: it separates nothing
+
+    @property
+    def baseline_accuracy(self) -> float:
+        """Accuracy of "call everything covered": the floor any useful cut-off has to beat."""
+        return self.answerable_total / (self.answerable_total + self.absent_total)
 
 
 def suggest_threshold(
@@ -78,5 +88,12 @@ def suggest_threshold(
         correct += sum(1 for score in absent_scores if score < threshold)
         accuracy = correct / total
         if best is None or accuracy > best.accuracy:
-            best = ThresholdSuggestion(threshold=threshold, accuracy=accuracy)
+            kept = sum(1 for score in answerable_scores if score >= threshold)
+            rejected = sum(1 for score in absent_scores if score < threshold)
+            best = ThresholdSuggestion(
+                threshold=threshold, accuracy=accuracy,
+                answerable_kept=kept, answerable_total=len(answerable_scores),
+                absent_rejected=rejected, absent_total=len(absent_scores),
+                keeps_everything=threshold < distinct[0],
+            )
     return best

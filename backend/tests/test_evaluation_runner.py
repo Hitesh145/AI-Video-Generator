@@ -112,6 +112,7 @@ def test_the_markdown_report_lists_modes_tables_thresholds_and_missed_questions(
     assert "| vector |" in text and "| hybrid |" in text
     assert "recall@5" in text and "MRR" in text
     assert "threshold" in text.lower()
+    assert "baseline" in text.lower() and "kept" in text.lower()   # accuracy is never shown without its floor
     assert "q3" in text                       # nobody found it
     assert "demo" in text
 
@@ -132,7 +133,7 @@ def make_context(paper_text="the alpha phrase is here"):
         searcher=FakeSearcher({("Question q1?", "vector"): [ev("a", "the alpha phrase here", 0.9)],
                                ("Question q4?", "vector"): [ev("g", "unrelated", 0.2)]}),
         ensure_document=lambda key, path: f"doc-{key}",
-        paper_text=lambda document_id: paper_text,
+        paper_passages=lambda document_id: [paper_text],
     )
 
 

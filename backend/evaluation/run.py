@@ -35,7 +35,7 @@ class Context:
     ingestor: Any
     searcher: Any
     ensure_document: Callable[[str, Path], str]      # (paper key, pdf path) -> stored document id
-    paper_text: Callable[[str], str]                 # document id -> the stored passages as one text
+    paper_passages: Callable[[str], list[str]]       # document id -> the stored passages, one string each
 
 
 def build_context(user_email: str) -> Context:
@@ -56,13 +56,13 @@ def build_context(user_email: str) -> Context:
     storage = RAGStorageService(repository)
     ingestor = PaperIngestor(storage)
 
-    def paper_text(document_id: str) -> str:
+    def paper_passages(document_id: str) -> list[str]:
         with factory() as session:
             rows = session.execute(
                 text("SELECT text FROM rag_document_chunks WHERE document_id = :id ORDER BY sequence_index"),
                 {"id": document_id},
             ).scalars()
-            return "\n".join(rows)
+            return list(rows)
 
     return Context(
         user_id=user.user_id,
@@ -70,7 +70,7 @@ def build_context(user_email: str) -> Context:
         ingestor=ingestor,
         searcher=build_paper_searcher(storage, repository),
         ensure_document=lambda key, path: ensure_paper(path, user.user_id, storage, ingestor, PAPERS_DIR / key / "work"),
-        paper_text=paper_text,
+        paper_passages=paper_passages,
     )
 
 
@@ -107,7 +107,7 @@ def main(
             print(f"{key}: no question file yet ({question_file.name})")
             continue
         question_set = load_question_set(question_file)
-        problems = find_problems(question_set, context.paper_text(document_id))
+        problems = find_problems(question_set, context.paper_passages(document_id))
         for problem in problems:
             print(f"{key}: {problem}")
         if problems:

@@ -74,3 +74,12 @@ def test_suggest_threshold_ties_choose_the_lower_cutoff():
 
     assert suggestion.accuracy == pytest.approx(0.5)
     assert suggestion.threshold < 0.5
+
+
+def test_suggest_threshold_reports_per_group_counts_and_the_do_nothing_baseline():
+    # 4 answerable, 1 absent: "call everything covered" is already right 4 times out of 5.
+    suggestion = suggest_threshold([0.8, 0.7, 0.9, 0.6], [0.65])
+
+    assert (suggestion.answerable_kept, suggestion.answerable_total) == (4, 4)
+    assert (suggestion.absent_rejected, suggestion.absent_total) == (0, 1)
+    assert suggestion.baseline_accuracy == pytest.approx(0.8)
