@@ -8,7 +8,7 @@ from animation.schemas import RenderSection
 from animation.storyboard import PlannedBeat
 from animation.templates.render import RenderError
 from fakes import FakeLLM
-from manim import DOWN, LEFT, RIGHT, UP, Arrow, Circle, Line, Rectangle, Text, ThreeDScene, VGroup
+from manim import DOWN, LEFT, RIGHT, UP, Arrow, BackgroundRectangle, Circle, Line, Rectangle, SurroundingRectangle, Text, ThreeDScene, VGroup
 
 SECTION = RenderSection(index=2, title="Why it matters", narration="Algorithms are everywhere.")
 BEATS = [PlannedBeat("Algorithms are everywhere in daily life.", "a ring of icons"),
@@ -274,3 +274,32 @@ def test_the_codegen_prompt_contains_the_layout_rules(tmp_path):
         "Call fit_in_frame on every group you build.",
     ):
         assert rule in prompt
+
+
+def test_a_background_rectangle_or_tight_surrounding_box_is_not_a_crossing():
+    label = text("Highlighted")
+
+    assert kit.layout_issues(Scene(BackgroundRectangle(label, fill_opacity=0.5, buff=0), label)) == []
+    assert kit.layout_issues(Scene(label, SurroundingRectangle(label, buff=0.05))) == []
+
+
+def test_a_label_scaled_to_just_fit_inside_its_box_is_fine():
+    box = Rectangle(width=3, height=1)
+    label = text("Inside")
+    label.scale_to_fit_width(box.width - 0.08)
+
+    assert kit.layout_issues(Scene(box, label)) == []
+
+
+def test_a_small_layout_flaw_on_time_beats_a_clean_layout_that_is_far_too_late(tmp_path):
+    flawed = rows(["'A' and 'B' overlap"], [])
+    late = rows([], [])
+    late[1]["actual_end"] = 13.0
+    late[1]["overrun"] = 6.0
+    llm = FakeLLM([{"code": GOOD_CODE}] * 3)
+    renderer = Renderer({1: flawed, 2: late, 3: late})
+
+    result = run(llm, renderer, tmp_path)
+
+    assert (tmp_path / "out.mp4").read_bytes() == b"video1"
+    assert len(result.warnings) == 1 and "overlap" in result.warnings[0]

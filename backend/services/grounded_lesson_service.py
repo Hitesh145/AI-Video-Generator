@@ -87,16 +87,38 @@ def find_problems(
     return problems
 
 
+_BACKGROUND_SYMBOLS = frozenset("%\u00d7\u00b2\u00b3\u00bd\u00bc\u00be\u00b1\u2248\u221d\u2192+\u2212^=")
+_PAPER_CLAIM_WORDS = re.compile(
+    r"\b(?:this paper|the paper|the authors?|the study|this work|our (?:model|method|approach)|"
+    r"they (?:propose|show|find|report|introduce|demonstrate)|experiments?|results?|hundreds?|thousands?|"
+    r"millions?|billions?|half|twice|double[sd]?|triple[sd]?|percent|percentage|dozens?|orders? of magnitude)\b",
+    re.IGNORECASE,
+)
+_SENTENCE_END = re.compile(r"(?<=[.!?])[\"')\]]*\s+")
+
+
 def _background_problems(background: str, title: str) -> list[str]:
-    """Background is general-knowledge definitions only: no figures, no formulas, at most two sentences."""
+    """Background is general-knowledge definitions only: no figures, formulas or claims about the paper, at most two sentences."""
     text = background.strip()
     if not text:
         return []
-    if re.search(r"\d", text) or "=" in text:
+    if re.search(r"\d", text) or any(symbol in text for symbol in _BACKGROUND_SYMBOLS):
         return [f"Section '{title}' background must be plain definitions without numbers or formulas."]
-    if len([part for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]) > 2:
+    if _PAPER_CLAIM_WORDS.search(text):
+        return [f"Section '{title}' background must not make claims about the paper or its results."]
+    protected = text.replace("e.g.", "e\u0000g\u0000").replace("i.e.", "i\u0000e\u0000")
+    if len([part for part in _SENTENCE_END.split(protected) if part.strip()]) > 2:
         return [f"Section '{title}' background must be at most two sentences."]
     return []
+
+
+def _without_bad_background(lesson: GroundedLesson) -> GroundedLesson:
+    """Background is optional: a section whose background breaks the rules loses it instead of sinking the lesson."""
+    sections = [
+        section.model_copy(update={"background": ""}) if _background_problems(section.background, section.section_title) else section
+        for section in lesson.sections
+    ]
+    return lesson.model_copy(update={"sections": sections})
 
 
 def _compact(text: str) -> str:
@@ -170,6 +192,7 @@ class GroundedLessonService:
                         if part
                     )
                 )
+            result = _without_bad_background(result)
             problems = find_problems(result, shown, labels)
             if not problems:
                 return self._result(topic, result, passages, brief)

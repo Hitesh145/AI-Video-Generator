@@ -198,7 +198,7 @@ class CodegenRenderer:
         errors: list[str] = []
         previous_code: str | None = None
         previous_error: str | None = None
-        best_soft: tuple[tuple[int, float], Path, str, int] | None = None
+        best_soft: tuple[tuple[bool, int, float], Path, str, int] | None = None
 
         for attempt in range(1, self.max_attempts + 1):
             stem = artifacts_dir / f"section_{section.index}_attempt_{attempt}"
@@ -241,7 +241,8 @@ class CodegenRenderer:
                         return CodegenResult(output_path, [])
                     error = "\n".join(message for message in (check.error, layout.error) if message)
                     if not check.hard:
-                        score = (layout.issue_count, check.worst_overrun)
+                        # far too late is worse than a small layout flaw: lateness first, then flaws, then overrun
+                        score = (check.worst_overrun > 2 * MAX_OVERRUN_SECONDS, layout.issue_count, check.worst_overrun)
                         if best_soft is None or score < best_soft[0]:
                             best_soft = (score, attempt_output, error, layout.issue_count)
 

@@ -314,3 +314,44 @@ def test_the_grounded_prompt_allows_marked_background():
     assert ("If a term in your narration is not defined by the passages, you may define it in the section's background "
             "field in at most two plain sentences from general knowledge; never put numbers, formulas or claims about "
             "this paper there.") in " ".join(llm.prompts[0].split())
+
+
+def test_background_that_hides_paper_claims_or_big_number_words_is_a_problem():
+    for bad in (
+        "The authors show attention beats recurrence.",
+        "Two orders of magnitude fewer steps.",
+        "It improves by five percent.",
+        "A value of x\u00b2 grows.",
+        "About \u00bd of them.",
+        "The paper defines a layer.",
+        "Results improve with depth.",
+        "They propose a new layer.",
+        "It is twice as fast.",
+        "Hundreds of layers are stacked.",
+    ):
+        assert len(find_problems(with_background(bad), SHOWN)) == 1, bad
+
+
+def test_plain_definitions_with_small_number_words_are_fine():
+    assert find_problems(with_background("A vector is an ordered list of two or more numbers."), SHOWN) == []
+
+
+def test_e_g_and_i_e_do_not_end_a_sentence():
+    assert find_problems(with_background("A layer, e.g. a convolution, is one step. It transforms its input."), SHOWN) == []
+
+
+def test_three_sentences_after_a_closing_quote_are_still_counted():
+    problems = find_problems(with_background('A layer is called a "block." It is one step. It transforms input.'), SHOWN)
+
+    assert len(problems) == 1 and "at most two sentences" in problems[0]
+
+
+def test_a_bad_background_is_dropped_instead_of_sinking_the_whole_lesson():
+    bad = lesson(GroundedSection(section_title="Depth", narration="The encoder has six identical layers.",
+                                 evidence_ids=["P1"], background="A layer has 6 units."))
+    llm = FakeLLM(bad)
+
+    result = GroundedLessonService(llm).create("the encoder", EVIDENCE)
+
+    assert result.section_background == [""] and len(llm.prompts) == 1
+    assert result.lesson_script.sections[0].narration == "The encoder has six identical layers."

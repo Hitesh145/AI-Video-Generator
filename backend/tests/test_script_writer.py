@@ -128,3 +128,13 @@ def test_the_old_two_argument_call_still_works():
     result = ScriptWriterService(llm).create_lesson_script(make_request(), make_plan())
 
     assert result.conclusion == "Bye."
+
+
+def test_the_length_rewrite_is_rejected_if_it_renames_or_adds_sections():
+    renamed = {"introduction": "Hi.", "conclusion": "Bye.",
+               "sections": [{"section_title": "Renamed", "narration": LONG * 8}, {"section_title": "Extra", "narration": LONG}]}
+    llm = FakeLLM([script("Short one."), renamed])
+
+    result = ScriptWriterService(llm).create_lesson_script(make_request(minutes=8), make_plan(("A",)))
+
+    assert [s.section_title for s in result.sections] == ["S1"] and result.sections[0].narration == "Short one."

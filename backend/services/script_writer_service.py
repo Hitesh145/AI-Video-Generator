@@ -43,7 +43,8 @@ class ScriptWriterService:
         if written < self.MIN_LENGTH_SHARE * target:
             # Models tend to stop far short of the requested length; ask once for the full lesson.
             retry = self._generate(self._expansion_prompt(prompt, script, written, target))
-            if _words(retry) > written:
+            same_sections = [s.section_title for s in retry.sections] == [s.section_title for s in script.sections]
+            if same_sections and _words(retry) > written:
                 return retry
         return script
 

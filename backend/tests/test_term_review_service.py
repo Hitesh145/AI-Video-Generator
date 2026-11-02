@@ -115,13 +115,42 @@ def test_a_model_error_in_the_review_propagates():
         TermReviewService(llm).improve(request(), BASE)
 
 
-def test_a_model_error_in_the_fix_propagates():
-    llm = FakeLLM([review([("lookahead", "Closure", "never explained")]), RuntimeError("model down")])
-
-    with pytest.raises(RuntimeError, match="model down"):
-        TermReviewService(llm).improve(request(), BASE)
-
-
 def test_the_schema_accepts_an_empty_review():
     assert TermReview(undefined_terms=[]).undefined_terms == []
     assert UndefinedTerm(term="t", section_title="s", reason="r").term == "t"
+
+
+def test_a_failed_fix_keeps_the_original_script_and_reports_the_terms_as_unexplained():
+    llm = FakeLLM([review([("lookahead", "Closure", "never explained")]), RuntimeError("model down")])
+
+    fixed, remaining = TermReviewService(llm).improve(request(), BASE)
+
+    assert fixed == BASE and remaining == ["lookahead"]
+
+
+def test_an_unreadable_fix_answer_keeps_the_original_too():
+    llm = FakeLLM([review([("lookahead", "Closure", "never explained")]), {"introduction": "x"}])
+
+    fixed, remaining = TermReviewService(llm).improve(request(), BASE)
+
+    assert fixed == BASE and remaining == ["lookahead"]
+
+
+def test_a_rejected_fix_reports_the_terms_that_stay_unexplained():
+    dropped = script(("Items", "Only one section now."))
+    llm = FakeLLM([review([("lookahead", "Closure", "never explained")]), dropped.model_dump()])
+
+    fixed, remaining = TermReviewService(llm).improve(request(), BASE)
+
+    assert fixed == BASE and remaining == ["lookahead"]
+
+
+def test_a_fix_with_an_empty_section_or_far_fewer_words_is_rejected():
+    empty = script(("Items", ""), ("Closure", "Closure adds every rule the parser could start next."))
+    thin = script(("Items", "Dot."), ("Closure", "Adds."), intro="Hi.", conclusion="Bye.")
+    for bad in (empty, thin):
+        llm = FakeLLM([review([("lookahead", "Closure", "never explained")]), bad.model_dump()])
+
+        fixed, _ = TermReviewService(llm).improve(request(), BASE)
+
+        assert fixed == BASE

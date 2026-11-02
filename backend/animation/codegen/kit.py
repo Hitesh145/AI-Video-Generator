@@ -73,6 +73,7 @@ EDGE_TOLERANCE = 0.05         # frame units
 MIN_VISIBLE_OPACITY = 0.05    # fully faded text is not on screen
 TOUCH_MARGIN = 0.05           # a line within this distance of a text box counts as touching it
 OUTLINE_SAMPLES = 24
+CONTAINS_TOLERANCE = 0.02     # a box this close to containing the text still counts as containing it
 
 
 def _text_leaves(mobjects):
@@ -138,9 +139,14 @@ def layout_issues(scene) -> list[str]:
         if shape.get_stroke_opacity() >= MIN_VISIBLE_OPACITY or shape.get_fill_opacity() >= MIN_VISIBLE_OPACITY
     ]
     outlines = [_outline_points(shape) for shape in shapes]
+    shape_boxes = [(s.get_left()[0], s.get_right()[0], s.get_bottom()[1], s.get_top()[1]) for s in shapes]
     for leaf, (left, right, bottom, top) in zip(leaves, boxes):
         inner = (left - TOUCH_MARGIN, right + TOUCH_MARGIN, bottom - TOUCH_MARGIN, top + TOUCH_MARGIN)
-        for points in outlines:
+        for points, (s_left, s_right, s_bottom, s_top) in zip(outlines, shape_boxes):
+            # a shape whose box contains the whole text (a highlight, a surrounding box) is a container, not a crossing
+            if (s_left <= left + CONTAINS_TOLERANCE and s_right >= right - CONTAINS_TOLERANCE
+                    and s_bottom <= bottom + CONTAINS_TOLERANCE and s_top >= top - CONTAINS_TOLERANCE):
+                continue
             if any(inner[0] < point[0] < inner[1] and inner[2] < point[1] < inner[3] for point in points):
                 issues.append(f"'{_label(leaf)}' is crossed by or touching a line, arrow or shape edge")
                 break

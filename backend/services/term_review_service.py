@@ -25,6 +25,10 @@ def _script_text(script: LessonScript) -> str:
     return " ".join([script.introduction, *(section.narration for section in script.sections), script.conclusion])
 
 
+def _word_count(script: LessonScript) -> int:
+    return len(_script_text(script).split())
+
+
 def _variants(term: str) -> set[str]:
     base = term.strip().casefold()
     return {base, base + "s", base[:-1] if base.endswith("s") else base}
@@ -59,11 +63,19 @@ class TermReviewService:
     ) -> tuple[LessonScript, list[str]]:
         """The script with its undefined terms explained (one rewrite), and the must_cover items still missing."""
         undefined = self.review(lesson_request, script)
+        accepted = False
         if undefined:
-            fixed = self._fix(lesson_request, script, undefined)
-            if self._same_outline(script, fixed):
-                script = fixed
-        return script, missing_must_cover(lesson_request, script)
+            try:
+                fixed = self._fix(lesson_request, script, undefined)
+            except Exception:
+                fixed = None          # the review ran; a failed rewrite keeps the original script, terms are reported
+            if fixed is not None and self._acceptable(script, fixed):
+                script, accepted = fixed, True
+        remaining = missing_must_cover(lesson_request, script)
+        if undefined and not accepted:
+            named = [item.term for item in undefined]
+            remaining = named + [item for item in remaining if item.casefold() not in {n.casefold() for n in named}]
+        return script, remaining
 
     def _fix(self, lesson_request: LessonRequest, script: LessonScript, undefined: list[UndefinedTerm]) -> LessonScript:
         result = self.llm_service.generate_structured(self._fix_prompt(lesson_request, script, undefined), LessonScript)
@@ -71,9 +83,19 @@ class TermReviewService:
             raise TypeError("The term fix did not return a LessonScript.")
         return result
 
+    MIN_WORD_SHARE = 0.80       # a rewrite that shrinks the script below this share of its words is rejected
+
+    @classmethod
+    def _acceptable(cls, original: LessonScript, rewritten: LessonScript) -> bool:
+        """A rewrite may add words, never drop, rename, reorder or empty sections, nor gut the script."""
+        if not cls._same_outline(original, rewritten):
+            return False
+        if any(not section.narration.strip() for section in rewritten.sections):
+            return False
+        return _word_count(rewritten) >= cls.MIN_WORD_SHARE * _word_count(original)
+
     @staticmethod
     def _same_outline(original: LessonScript, rewritten: LessonScript) -> bool:
-        """A rewrite may add words, never drop, rename or reorder sections."""
         return [s.section_title for s in original.sections] == [s.section_title for s in rewritten.sections]
 
     @staticmethod
