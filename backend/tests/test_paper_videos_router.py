@@ -119,7 +119,7 @@ def test_check_returns_level_similarity_and_message(env, similarity, level):
     assert body["level"] == level and body["best_similarity"] == pytest.approx(similarity)
     assert body["message"]
     assert ("does not cover" in body["message"]) == (level == "absent")
-    assert ("only touches" in body["message"]) == (level == "weak")
+    assert ("may only mention" in body["message"]) == (level == "weak")
 
 
 def test_an_absent_topic_in_paper_mode_is_409_even_without_calling_check(env):

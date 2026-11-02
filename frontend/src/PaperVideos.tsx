@@ -171,7 +171,7 @@ function PaperVideos({ paperId, ready }: { paperId: string; ready: boolean }) {
             {popup && (
                 <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Topic coverage">
                     <div className="modal">
-                        <h2>{popup.level === "weak" ? "The paper only mentions this briefly" : "The paper does not cover this"}</h2>
+                        <h2>{popup.level === "weak" ? "The paper may only mention this" : "The paper does not cover this"}</h2>
                         <p>{popup.message}</p>
                         <div className="modal-actions">
                             {popup.level === "weak" && <button className="generate-button" onClick={() => void start("paper")}>Short video of what the paper says</button>}

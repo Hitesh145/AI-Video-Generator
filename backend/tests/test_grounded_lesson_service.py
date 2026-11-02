@@ -150,7 +150,7 @@ def test_brief_mode_shortens_the_request_and_tells_the_model():
     result = GroundedLessonService(llm).create("the encoder", EVIDENCE, brief=True)
 
     assert result.lesson_request.duration_minutes == 2
-    assert "The paper only touches this topic briefly; say so in the introduction and keep the video short." in llm.prompts[0]
+    assert "The paper may only touch this topic briefly; if so, say so in the introduction and keep the video short." in llm.prompts[0]
 
 
 def narrated(text, ids=("P1",), **kwargs):

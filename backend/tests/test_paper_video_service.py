@@ -187,7 +187,7 @@ def test_a_covered_topic_renders_with_citations_evidence_and_the_not_checked_war
 
     assert job.status == "completed"
     warnings, artifacts = world.demo.rendered[0]
-    assert NOT_CHECKED_WARNING in warnings and not any("briefly" in w for w in warnings)
+    assert NOT_CHECKED_WARNING in warnings and not any("only briefly" in w for w in warnings)
     assert json.loads(artifacts["citations.json"]) == {"How": ["P1", "P2"]}
     evidence_file = json.loads(artifacts["evidence.json"])
     assert [p["passage_id"] for p in evidence_file] == ["P1", "P2"]
@@ -205,7 +205,7 @@ def test_a_weak_topic_uses_brief_mode_and_adds_the_brief_warning(world):
     finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
 
     assert world.grounded.calls[0][2] is True
-    assert any("briefly" in w for w in world.demo.rendered[0][0])
+    assert any("only briefly" in w for w in world.demo.rendered[0][0])
 
 
 def test_general_mode_runs_the_unchanged_pipeline_and_records_kind_general(world):

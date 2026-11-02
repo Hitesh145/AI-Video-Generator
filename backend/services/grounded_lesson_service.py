@@ -176,7 +176,7 @@ class GroundedLessonService:
             "gap_note what is missing; do not write a lesson about other content in that case.",
         ]
         if brief:
-            lines.append("10. The paper only touches this topic briefly; say so in the introduction and keep the video short.")
+            lines.append("10. The paper may only touch this topic briefly; if so, say so in the introduction and keep the video short.")
         lines += [
             "",
             "Passages from the paper:",

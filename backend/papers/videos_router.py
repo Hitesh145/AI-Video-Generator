@@ -17,7 +17,7 @@ Topic = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 
 MESSAGES = {
     "covered": "The paper covers this topic.",
-    "weak": "The paper only touches this topic briefly.",
+    "weak": "The paper may only mention this topic. We can try a short video of what it says; if it has nothing on the topic, we will tell you instead.",
     "absent": "The paper does not cover this topic. It can still be explained from general knowledge.",
 }
 

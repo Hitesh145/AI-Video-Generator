@@ -22,7 +22,7 @@ Mode = Literal["paper", "general"]
 CoverageCheck = Coverage
 
 NOT_CHECKED_WARNING = "This video has not yet been checked sentence by sentence against the paper."
-BRIEF_WARNING = "The paper only touches this topic briefly."
+BRIEF_WARNING = "The paper may cover this topic only briefly."
 
 
 class PaperNotFound(Exception):
