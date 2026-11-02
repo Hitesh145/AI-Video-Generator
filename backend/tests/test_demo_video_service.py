@@ -147,3 +147,36 @@ def test_service_still_works_without_a_run_context(tmp_path):
 
     assert response.video_path.endswith("lesson_demo.mp4")
     assert not (Path(response.output_dir) / "llm_calls.json").exists()
+
+
+class ExplodingStage:
+    def __getattr__(self, name):
+        raise AssertionError(f"render_lesson must not call {name}")
+
+
+def test_render_lesson_writes_extra_artifacts_and_passes_warnings_through(tmp_path):
+    service = DemoVideoService(
+        lesson_analyzer_service=ExplodingStage(),
+        lesson_planner_service=ExplodingStage(),
+        script_writer_service=ExplodingStage(),
+        section_animator=Animator(),
+        output_root=tmp_path,
+        concat_clips=lambda paths, out: out,
+        build_audio=lambda paths, durations, out: out,
+        mux=_mux,
+    )
+    request = LessonRequest(topic="The encoder", audience="a learner", goal="understand",
+                            duration_minutes=2, teaching_depth="introductory")
+    plan = LessonPlan(title="The encoder", learning_objectives=["x"], sections=["How"])
+    script = LessonScript(introduction="Hi.", sections=[ScriptSection(section_title="How", narration="Halve it.")],
+                          conclusion="Bye.")
+
+    response = service.render_lesson(
+        request, plan, script, qc_warnings=["Not yet checked."], extra_artifacts={"citations.json": '{"How": ["P1"]}'}
+    )
+
+    run_dir = Path(response.output_dir)
+    assert run_dir.parent == tmp_path and run_dir.name.startswith("the-encoder-")
+    assert (run_dir / "citations.json").read_text(encoding="utf-8") == '{"How": ["P1"]}'
+    assert "Not yet checked." in response.qc_warnings and "router warning" in response.qc_warnings
+    assert response.lesson_plan.title == "The encoder"

@@ -1,6 +1,7 @@
 import json
 import re
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Callable, Protocol
 from uuid import uuid4
 
@@ -116,6 +117,24 @@ class DemoVideoService:
                 lesson_plan,
             )
 
+        return self.render_lesson(
+            lesson_request, lesson_plan, lesson_script, knowledge_base=knowledge_base, qc_warnings=qc_warnings
+        )
+
+    def render_lesson(
+        self,
+        lesson_request: LessonRequest,
+        lesson_plan: LessonPlan,
+        lesson_script: LessonScript,
+        knowledge_base: KnowledgeBase | None = None,
+        qc_warnings: list[str] | None = None,
+        extra_artifacts: Mapping[str, str] | None = None,
+    ) -> DemoVideoResponse:
+        """Animate and assemble a lesson that is already written (the stages from "animate" onward).
+
+        ``extra_artifacts`` maps a file name to text that is saved in the run folder next to the other artifacts.
+        """
+        qc_warnings = list(qc_warnings or [])
         sections = build_render_sections(lesson_script)
         if not sections:
             raise ValueError("Lesson script has no narration to render.")
@@ -171,6 +190,8 @@ class DemoVideoService:
             knowledge_base=knowledge_base,
             summaries=summaries,
         )
+        for filename, content in (extra_artifacts or {}).items():
+            (output_dir / filename).write_text(content, encoding="utf-8")
 
         return DemoVideoResponse(
             lesson_request=lesson_request,
