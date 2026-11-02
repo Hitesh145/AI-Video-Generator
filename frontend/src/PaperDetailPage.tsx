@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "./api";
+import PaperVideos from "./PaperVideos";
 import {
     MAX_POLL_FAILURES,
     POLL_INTERVAL_MS,
@@ -118,10 +119,7 @@ function PaperDetailPage({ paperId }: { paperId: string }) {
                     <p className="empty-library">The report appears once the paper has been read.</p>
                 )}
             </section>
-            <section className="library-section">
-                <div className="library-heading"><div><p className="eyebrow">From this paper</p><h2>Videos</h2></div></div>
-                <p className="empty-library">No videos yet. Making videos from a paper is the next step of this feature.</p>
-            </section>
+            <PaperVideos paperId={paper.paper_id} ready={paper.status === "ready"} />
         </section>
     );
 }
