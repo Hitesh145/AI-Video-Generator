@@ -42,6 +42,7 @@ class PaperVideoOut(BaseModel):
     kind: str
     url: str
     created_at: datetime
+    notes: list[str]
 
 
 def create_paper_videos_router(service: PaperVideoService, current_user: Callable[[Request], UserInfo]) -> APIRouter:
@@ -65,15 +66,16 @@ def create_paper_videos_router(service: PaperVideoService, current_user: Callabl
     @router.get("/papers/{paper_id}/videos", response_model=list[PaperVideoOut])
     def list_videos(paper_id: str, user: UserInfo = Depends(current_user)) -> list[PaperVideoOut]:
         try:
-            records = service.list_videos(user.user_id, paper_id)
+            items = service.list_videos(user.user_id, paper_id)
         except PaperNotFound as exc:
             raise _problem(exc)
         return [
             PaperVideoOut(
-                video_id=record.video_id, title=record.title, kind=record.kind,
-                url=f"/media/{record.run_dir}/lesson_demo.mp4", created_at=record.created_at,
+                video_id=item.record.video_id, title=item.record.title, kind=item.record.kind,
+                url=f"/media/{item.record.run_dir}/lesson_demo.mp4", created_at=item.record.created_at,
+                notes=item.notes,
             )
-            for record in records
+            for item in items
         ]
 
     return router

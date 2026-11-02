@@ -91,6 +91,8 @@ class FakeDemo:
         run = self.root / f"run-{uuid4().hex[:6]}"
         run.mkdir()
         self.rendered.append((qc_warnings, dict(extra_artifacts or {})))
+        for name, content in (extra_artifacts or {}).items():
+            (run / name).write_text(content, encoding="utf-8")
         return response(run)
 
     def generate_demo_video(self, request):
@@ -124,7 +126,8 @@ def world(tmp_path):
         w.searcher = FakeSearcher(similarity)
         w.grounded = grounded or FakeGrounded()
         w.service = PaperVideoService(
-            papers or FakePapers(record(w.me)), w.searcher, w.grounded, w.demo, w.jobs, w.videos
+            papers or FakePapers(record(w.me)), w.searcher, w.grounded, w.demo, w.jobs, w.videos,
+            output_root=tmp_path,
         )
         return w.service
 
@@ -243,3 +246,21 @@ def test_list_videos_is_scoped_to_the_owner(world):
     assert len(service.list_videos(world.me, "paper-1")) == 1
     with pytest.raises(PaperNotFound):
         service.list_videos(world.users["other"], "paper-1")
+
+
+def test_the_video_warnings_are_saved_with_the_video_and_listed_as_notes(world):
+    service = world.build(similarity=0.68)
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    items = service.list_videos(world.me, "paper-1")
+
+    assert len(items) == 1
+    assert NOT_CHECKED_WARNING in items[0].notes and any("only briefly" in n for n in items[0].notes)
+    assert items[0].record.kind == "paper"
+
+
+def test_a_general_video_has_no_notes(world):
+    service = world.build()
+    finish(world, service.start(world.me, "paper-1", "bananas", "general"))
+
+    assert service.list_videos(world.me, "paper-1")[0].notes == []

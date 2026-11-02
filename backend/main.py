@@ -149,6 +149,7 @@ paper_video_service = PaperVideoService(
     demo=demo_video_service,
     jobs=job_service,
     videos=video_repository,
+    output_root=output_root,
 )
 app.include_router(create_paper_videos_router(paper_video_service, current_user))
 app.add_middleware(

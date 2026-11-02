@@ -3,7 +3,7 @@ import { errorDetail } from "./papers";
 
 export type CoverageLevel = "covered" | "weak" | "absent";
 export type CoverageCheck = { level: CoverageLevel; best_similarity: number | null; message: string };
-export type PaperVideo = { video_id: string; title: string; kind: "paper" | "general" | "topic"; url: string; created_at: string };
+export type PaperVideo = { video_id: string; title: string; kind: "paper" | "general" | "topic"; url: string; created_at: string; notes: string[] };
 export type StartMode = "paper" | "general";
 
 export type StageState = "pending" | "current" | "done" | "failed";
@@ -17,6 +17,15 @@ export type JobStatus = {
 };
 
 export const MAX_TOPIC_LENGTH = 500;
+const REFUSAL_MARKER = "does not address this topic";
+
+/** A failed job's message for display, and whether it is the "paper does not cover this" refusal. */
+export function describeJobFailure(error: { stage: string; message: string }): { text: string; refusal: boolean } {
+    const refusal = error.message.includes(REFUSAL_MARKER);
+    // The server prefixes the exception name ("TopicNotAddressed: ..."); a person should not see it.
+    const message = error.message.replace(/^[A-Za-z]+:\s*/, "");
+    return { text: refusal ? message : `${error.stage}: ${message}`, refusal };
+}
 export const JOB_POLL_INTERVAL_MS = 1000;
 export const MAX_JOB_POLL_FAILURES = 5;
 

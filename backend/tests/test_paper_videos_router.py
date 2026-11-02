@@ -49,7 +49,7 @@ def env(tmp_path):
             record("me", "paper-1"), record("me", "paper-2", status="parsing", document_id=None),
             record("other", "their-paper"),
         )
-        e.service = PaperVideoService(e.papers, e.searcher, e.grounded, e.demo, e.jobs, e.videos)
+        e.service = PaperVideoService(e.papers, e.searcher, e.grounded, e.demo, e.jobs, e.videos, output_root=tmp_path)
         app = FastAPI()
         app.include_router(create_paper_videos_router(e.service, stub_current_user))
         app.include_router(create_jobs_router(e.jobs, stub_current_user))
@@ -159,5 +159,6 @@ def test_list_shows_only_this_papers_videos_with_kind_and_media_url(env):
     video = listed[0]
     assert video["kind"] == "paper" and video["title"] == "The encoder"
     assert video["url"].startswith("/media/") and video["url"].endswith("/lesson_demo.mp4")
-    assert set(video) == {"video_id", "title", "kind", "url", "created_at"}
+    assert set(video) == {"video_id", "title", "kind", "url", "created_at", "notes"}
+    assert any("not yet been checked" in note for note in video["notes"])
     assert env.client.get("/papers/paper-1/videos", headers=OTHER).status_code == 404

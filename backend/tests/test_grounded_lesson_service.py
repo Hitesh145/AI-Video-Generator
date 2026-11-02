@@ -200,9 +200,14 @@ def test_introduction_and_conclusion_numbers_are_checked_against_all_passages():
 
 
 def test_page_and_section_labels_count_as_text_the_model_was_shown():
-    shown = {"P1": "(page 5, section 3.2 Attention) Attention maps a query to an output."}
+    shown = {"P1": "Attention maps a query to an output."}
+    labels = {"P1": "page 5, section 3.2 Attention"}
 
-    assert find_problems(narrated("Attention maps a query to an output.", intro="This covers section 3.2 on page 5."), shown) == []
+    covers = narrated("Attention maps a query to an output.", intro="This covers section 3.2 on page 5.")
+    assert find_problems(covers, shown, labels) == []
+    wrong = narrated("Attention maps a query to an output.", intro="This covers section 3.2 on page 9.")
+    problems = find_problems(wrong, shown, labels)
+    assert len(problems) == 1 and "9" in problems[0]
 
 
 def test_a_lesson_that_says_the_paper_does_not_address_the_topic_is_refused_without_a_retry():
@@ -226,3 +231,35 @@ def test_prompt_has_the_formula_rule_and_the_covers_topic_instruction():
     prompt = llm.prompts[0]
     assert "Never write a formula or equation that is not printed in the passages" in prompt
     assert "covers_topic" in prompt and "false" in prompt
+
+
+def test_small_invented_numbers_are_caught_even_when_they_match_page_or_section_labels():
+    shown = {"P1": "The model has 16 layers."}
+    labels = {"P1": "page 7, section 4 Results"}
+
+    problems = find_problems(narrated("There are 7 heads and 4 stages and 1 decoder."), shown, labels)
+
+    assert len(problems) == 1 and all(n in problems[0] for n in ("7", "4", "1"))
+
+
+def test_a_listed_run_of_sections_is_checked_against_the_labels():
+    shown = {"P1": "Text.", "P2": "More text."}
+    labels = {"P1": "page 2, section 1 Introduction", "P2": "page 2, section 2 Background"}
+
+    ok = narrated("Text.", intro="This covers sections 1 and 2 on page 2.")
+
+    assert find_problems(ok, shown, labels) == []
+
+
+def test_an_equation_with_a_changed_sign_or_an_extra_term_is_a_problem():
+    shown = {"P1": "We let H(x) = F(x) - x be the residual."}
+
+    assert find_problems(narrated("We let H(x) = F(x) - x."), shown) == []
+    assert len(find_problems(narrated("We let H(x) = F(x) + x."), shown)) == 1
+    assert len(find_problems(narrated("We let H(x) = F(x) - x + b."), shown)) == 1
+
+
+def test_latex_dollars_and_unicode_minus_do_not_make_a_faithful_equation_a_problem():
+    shown = {"P1": "We let H(x) = F(x) - x be the residual."}
+
+    assert find_problems(narrated("We let $H(x) = F(x) − x$ here."), shown) == []

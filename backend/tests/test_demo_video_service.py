@@ -180,3 +180,19 @@ def test_render_lesson_writes_extra_artifacts_and_passes_warnings_through(tmp_pa
     assert (run_dir / "citations.json").read_text(encoding="utf-8") == '{"How": ["P1"]}'
     assert "Not yet checked." in response.qc_warnings and "router warning" in response.qc_warnings
     assert response.lesson_plan.title == "The encoder"
+
+
+def test_a_very_long_topic_still_gets_a_valid_run_folder_name(tmp_path):
+    service = DemoVideoService(
+        lesson_analyzer_service=ExplodingStage(), lesson_planner_service=ExplodingStage(),
+        script_writer_service=ExplodingStage(), section_animator=Animator(), output_root=tmp_path,
+        concat_clips=lambda paths, out: out, build_audio=lambda paths, durations, out: out, mux=_mux,
+    )
+    request = LessonRequest(topic="Explain the method " * 30, audience="a learner", goal="understand",
+                            duration_minutes=2, teaching_depth="introductory")
+    plan = LessonPlan(title="T", learning_objectives=["x"], sections=["How"])
+    script = LessonScript(introduction="Hi.", sections=[ScriptSection(section_title="How", narration="n")], conclusion="Bye.")
+
+    response = service.render_lesson(request, plan, script)
+
+    assert len(Path(response.output_dir).name) <= 80

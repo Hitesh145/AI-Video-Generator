@@ -250,7 +250,7 @@ class DemoVideoService:
         return "/media/" + relative.as_posix()
 
     def _create_output_dir(self, topic: str) -> Path:
-        slug = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")
+        slug = re.sub(r"[^a-z0-9]+", "-", topic.lower())[:60].strip("-")      # a folder name must stay short
         if not slug:
             slug = "lesson"
 

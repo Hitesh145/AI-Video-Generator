@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -57,6 +58,12 @@ class Renderer(Protocol):
     def generate_demo_video(self, request: UserLessonRequest) -> DemoVideoResponse: ...
 
 
+@dataclass(frozen=True)
+class PaperVideoItem:
+    record: VideoRecord
+    notes: list[str]           # the quality-control warnings saved with the video
+
+
 class PaperVideoService:
     def __init__(
         self,
@@ -67,6 +74,7 @@ class PaperVideoService:
         jobs: JobService,
         videos: VideoRepository,
         evidence_count: int = 12,
+        output_root: Path | None = None,
     ) -> None:
         self.papers = papers
         self.searcher = searcher
@@ -75,6 +83,7 @@ class PaperVideoService:
         self.jobs = jobs
         self.videos = videos
         self.evidence_count = evidence_count
+        self.output_root = Path(output_root) if output_root else None
 
     def check(self, user_id: str, paper_id: str, topic: str) -> CoverageCheck:
         paper = self._ready_paper(user_id, paper_id)
@@ -102,9 +111,21 @@ class PaperVideoService:
             on_complete=self._recorder("paper", paper_id),
         )
 
-    def list_videos(self, user_id: str, paper_id: str) -> list[VideoRecord]:
+    def list_videos(self, user_id: str, paper_id: str) -> list[PaperVideoItem]:
         self._owned_paper(user_id, paper_id)
-        return self.videos.list_for_paper(user_id, paper_id)
+        return [
+            PaperVideoItem(record, self._notes(record.run_dir))
+            for record in self.videos.list_for_paper(user_id, paper_id)
+        ]
+
+    def _notes(self, run_dir: str) -> list[str]:
+        if self.output_root is None:
+            return []
+        try:
+            notes = json.loads((self.output_root / run_dir / "qc_warnings.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        return [note for note in notes if isinstance(note, str)] if isinstance(notes, list) else []
 
     # ------------------------------------------------------------------ internals
     def _owned_paper(self, user_id: str, paper_id: str) -> PaperRecord:
@@ -162,6 +183,7 @@ class PaperVideoService:
             extra_artifacts={
                 "evidence.json": json.dumps(evidence_file, indent=2, ensure_ascii=False),
                 "citations.json": json.dumps(citations, indent=2, ensure_ascii=False),
+                "qc_warnings.json": json.dumps(warnings, indent=2, ensure_ascii=False),
             },
         )
 

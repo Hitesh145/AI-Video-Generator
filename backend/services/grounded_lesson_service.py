@@ -28,7 +28,11 @@ class TopicNotAddressed(UngroundedLesson):
 
 
 _NUMBER = re.compile(r"(?<![\d.,])\d+(?:[.,]\d+)*(?!\d)")
-_EQUATION = re.compile(r"\S+\s*(?::=|=)\s*\S+")
+_EQUATION = re.compile(r"\S+\s*(?::=|=)\s*\S+(?:\s*[-+*/^−–]\s*\S+)*")
+_LOCATION = re.compile(
+    r"(?<![A-Za-z])(?:pages?|sections?)\s+(\d+(?:\.\d+)*(?:\s*(?:,|and|to|-)\s*\d+(?:\.\d+)*)*)", re.IGNORECASE
+)
+_DASHES = str.maketrans({"−": "-", "–": "-", "—": "-"})
 
 
 @dataclass(frozen=True)
@@ -46,16 +50,22 @@ class GroundedResult:
     section_citations: list[list[str]]       # passage ids per section, in section order
 
 
-def find_problems(lesson: GroundedLesson, passages: Mapping[str, str]) -> list[str]:
+def find_problems(
+    lesson: GroundedLesson, passages: Mapping[str, str], labels: Mapping[str, str] | None = None
+) -> list[str]:
     """Plain sentences naming everything that stops a lesson from being tied to the given passages.
 
-    ``passages`` maps each passage id to the text the model was shown for it. Besides the citations, every number
-    and every equation the narration states must appear in the passages it cites (the introduction and conclusion
-    are checked against all passages): numbers and formulas are copied from the paper, never recalled.
+    ``passages`` maps each passage id to the passage text; ``labels`` to its location label (for example
+    ``page 5, section 3.2 Attention``). Besides the citations, every number and every equation the narration states
+    must appear in the passage text it cites (the introduction and conclusion are checked against all passages):
+    numbers and formulas are copied from the paper, never recalled. Only a number written right after "page" or
+    "section" may instead match a location label, so labels cannot excuse an invented figure.
     """
+    labels = labels or {}
     if not lesson.sections:
         return ["The lesson has no sections."]
     everything = " ".join(passages.values())
+    every_label = " ".join(labels.values())
     problems = []
     for section in lesson.sections:
         title = section.section_title
@@ -67,28 +77,44 @@ def find_problems(lesson: GroundedLesson, passages: Mapping[str, str]) -> list[s
         if unknown:
             problems.append(f"Section '{title}' cites passages that were not given: {', '.join(unknown)}.")
         cited = " ".join(passages[i] for i in section.evidence_ids if i in passages)
+        cited_labels = " ".join(labels[i] for i in section.evidence_ids if i in labels)
         if cited and section.narration.strip():
-            problems += _unsupported(section.narration, cited, f"Section '{title}'", "its cited passages")
-    problems += _unsupported(lesson.introduction, everything, "The introduction", "any passage")
-    problems += _unsupported(lesson.conclusion, everything, "The conclusion", "any passage")
+            problems += _unsupported(section.narration, cited, cited_labels, f"Section '{title}'", "its cited passages")
+    problems += _unsupported(lesson.introduction, everything, every_label, "The introduction", "any passage")
+    problems += _unsupported(lesson.conclusion, everything, every_label, "The conclusion", "any passage")
     return problems
 
 
-def _unsupported(narration: str, haystack: str, who: str, where: str) -> list[str]:
+def _compact(text: str) -> str:
+    """Spacing, LaTeX dollars and dash variants must not make a faithful copy look different."""
+    return re.sub(r"\s+", "", text.replace("$", "")).translate(_DASHES)
+
+
+def _unsupported(narration: str, haystack: str, label_text: str, who: str, where: str) -> list[str]:
     problems = []
     squashed = re.sub(r"\s+", " ", haystack)
-    numbers = []
-    for token in _NUMBER.findall(narration):
-        if token not in numbers and not re.search(r"(?<![\d.,])" + re.escape(token) + r"(?!\d)", squashed):
+    with_labels = squashed + " " + re.sub(r"\s+", " ", label_text)
+    numbers: list[str] = []
+
+    def missing(token: str, text: str) -> bool:
+        return token not in numbers and not re.search(r"(?<![\d.,])" + re.escape(token) + r"(?!\d)", text)
+
+    for reference in _LOCATION.finditer(narration):
+        for token in _NUMBER.findall(reference.group(1)):
+            if missing(token, with_labels):
+                numbers.append(token)
+    for token in _NUMBER.findall(_LOCATION.sub(" ", narration)):
+        if missing(token, squashed):
             numbers.append(token)
     if numbers:
         problems.append(f"{who} states a number that is not in {where}: {', '.join(numbers)}.")
-    no_spaces = re.sub(r"\s+", "", haystack)
-    equations = []
+
+    compact_haystack = _compact(haystack)
+    equations: list[str] = []
     for match in _EQUATION.findall(narration):
-        compact = re.sub(r"\s+", "", match).rstrip(".,;:")
-        if compact not in no_spaces and match.rstrip(".,;:") not in equations:
-            equations.append(match.rstrip(".,;:"))
+        shown = match.strip().rstrip(".,;:")
+        if _compact(shown) not in compact_haystack and shown not in equations:
+            equations.append(shown)
     if equations:
         problems.append(f"{who} states an equation that is not in {where}: {'; '.join(equations)}.")
     return problems
@@ -106,7 +132,8 @@ class GroundedLessonService:
         ]
         if not passages:
             raise UngroundedLesson("The paper has no readable passages to base a video on.")
-        shown = {passage.passage_id: _render(passage) for passage in passages}
+        shown = {passage.passage_id: passage.evidence.text for passage in passages}
+        labels = {passage.passage_id: _where(passage) for passage in passages}
 
         problems: list[str] = []
         for _ in range(self.max_attempts):
@@ -127,7 +154,7 @@ class GroundedLessonService:
                         if part
                     )
                 )
-            problems = find_problems(result, shown)
+            problems = find_problems(result, shown, labels)
             if not problems:
                 return self._result(topic, result, passages, brief)
         raise UngroundedLesson("The lesson could not be tied to the paper: " + " ".join(problems))
@@ -193,11 +220,17 @@ class GroundedLessonService:
         return "\n".join(lines)
 
 
-def _render(passage: Passage) -> str:
+def _where(passage: Passage) -> str:
     evidence = passage.evidence
-    pages = _pages(evidence)
-    where = ", ".join(part for part in (pages, f"section {' > '.join(evidence.section_path)}" if evidence.section_path else "") if part)
-    return f"[{passage.passage_id}] ({where})\n{evidence.text.strip()}" if where else f"[{passage.passage_id}]\n{evidence.text.strip()}"
+    section = f"section {' > '.join(evidence.section_path)}" if evidence.section_path else ""
+    return ", ".join(part for part in (_pages(evidence), section) if part)
+
+
+def _render(passage: Passage) -> str:
+    where = _where(passage)
+    body = passage.evidence.text.strip()
+    head = f"[{passage.passage_id}] ({where})" if where else f"[{passage.passage_id}]"
+    return head + chr(10) + body
 
 
 def _pages(evidence: Evidence) -> str:

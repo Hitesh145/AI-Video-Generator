@@ -6,6 +6,7 @@ import {
     MAX_TOPIC_LENGTH,
     QUICK_TOPICS,
     checkCoverage,
+    describeJobFailure,
     listVideos,
     markStopped,
     startVideo,
@@ -22,6 +23,7 @@ function PaperVideos({ paperId, ready }: { paperId: string; ready: boolean }) {
     const [jobId, setJobId] = useState<string | null>(null);
     const [job, setJob] = useState<JobStatus | null>(null);
     const [error, setError] = useState("");
+    const [refused, setRefused] = useState(false);          // the paper does not address the topic
     const [videos, setVideos] = useState<PaperVideo[]>([]);
 
     const running = busy || jobId !== null;
@@ -64,7 +66,11 @@ function PaperVideos({ paperId, ready }: { paperId: string; ready: boolean }) {
                 if (cancelled) return;
                 setJob(status);
                 if (status.status !== "running") {
-                    if (status.status === "failed" && status.error) setError(`${status.error.stage}: ${status.error.message}`);
+                    if (status.status === "failed" && status.error) {
+                        const failure = describeJobFailure(status.error);
+                        setError(failure.text);
+                        setRefused(failure.refusal);
+                    }
                     setJobId(null);
                     void loadVideos();
                     return;
@@ -94,6 +100,7 @@ function PaperVideos({ paperId, ready }: { paperId: string; ready: boolean }) {
         setPopup(null);
         setBusy(true);
         setError("");
+        setRefused(false);
         setJob(null);
         try {
             setJobId(await startVideo(paperId, trimmed, mode));
@@ -108,6 +115,7 @@ function PaperVideos({ paperId, ready }: { paperId: string; ready: boolean }) {
         if (!ready || !trimmed || running) return;
         setBusy(true);
         setError("");
+        setRefused(false);
         setJob(null);
         try {
             const check = await checkCoverage(paperId, trimmed);
@@ -154,6 +162,9 @@ function PaperVideos({ paperId, ready }: { paperId: string; ready: boolean }) {
                     </>
                 )}
                 {error && <p className="error-message">{error}</p>}
+                {refused && !running && (
+                    <p><button className="generate-button" onClick={() => void start("general")}>Normal video, not from the paper</button></p>
+                )}
                 {job && (
                     <div className="stage-list" aria-live="polite">
                         {job.stages.map((stage, index) => (
@@ -194,7 +205,9 @@ function PaperVideos({ paperId, ready }: { paperId: string; ready: boolean }) {
                                 <div className="video-card-info">
                                     <h3>{video.title}</h3>
                                     <p>{video.kind === "paper" ? "From the paper" : "Not from the paper"}</p>
-                                    {video.kind === "paper" && <p className="video-note">Not yet checked sentence by sentence against the paper.</p>}
+                                    {video.kind === "paper" && (video.notes.length > 0
+                                        ? video.notes.map((note) => <p className="video-note" key={note}>{note}</p>)
+                                        : <p className="video-note">Not yet checked sentence by sentence against the paper.</p>)}
                                 </div>
                             </article>
                         ))}
