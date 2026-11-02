@@ -13,6 +13,7 @@ from rag.asset_store import ManagedAssetStore
 from rag.database import build_session_factory
 from rag.pg_repository import PostgresRAGRepository
 from rag.storage_service import RAGStorageService
+from retrieval.search import build_paper_searcher
 
 pytestmark = [
     pytest.mark.integration,
@@ -133,3 +134,23 @@ def test_the_search_expression_is_covered_by_the_index(world):
         )).scalars())
 
     assert "ix_rag_chunks_fts" in plan
+
+
+def test_the_real_searcher_never_returns_another_users_or_another_papers_passages(world):
+    alice = world.user("alice")
+    bob = world.user("bob")
+    alices = world.paper(alice, [BINARY, PHOTO])
+    alices_other = world.paper(alice, ["Binary search binary search binary search on a sorted array"])
+    bobs = world.paper(bob, ["Binary binary binary search search search of the array array"])
+    for document_id in (alices, alices_other, bobs):
+        world.service.generate_missing_embeddings(document_id)
+    searcher = build_paper_searcher(world.service, world.repository)
+
+    for mode in ("vector", "keyword", "hybrid"):
+        own = searcher.search(alice, alices, "binary search of the array", k=10, mode=mode)
+        assert own and {e.document_id for e in own} == {alices}, mode
+        assert searcher.search(alice, bobs, "binary search of the array", mode=mode) == [], mode
+        assert searcher.search(bob, alices, "binary search of the array", mode=mode) == [], mode
+    hybrid = searcher.search(alice, alices, "binary search of the array", k=10, mode="hybrid")
+    assert any(e.methods == ("vector", "keyword") for e in hybrid)
+
