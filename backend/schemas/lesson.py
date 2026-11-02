@@ -34,6 +34,17 @@ class LessonRequest(BaseModel):
     )
 
 
+class SectionNote(BaseModel):
+    title: str = Field(description="The section this note belongs to.")
+    purpose: str = Field(description="One sentence: what the learner understands after this section.")
+    terms_to_define: list[str] = Field(
+        default_factory=list, description="Terms this section must explain before using them."
+    )
+    example: str = Field(
+        default="", description="For a procedure: the one worked example the section walks through."
+    )
+
+
 class LessonPlan(BaseModel):
     title: str = Field(
         description="The title of the educational lesson."
@@ -43,6 +54,10 @@ class LessonPlan(BaseModel):
     )
     sections: list[str] = Field(
         description="The ordered sequence of concepts to teach."
+    )
+    section_notes: list[SectionNote] = Field(
+        default_factory=list,
+        description="One note per section, in the same order: purpose, terms to define, worked example.",
     )
 
 
