@@ -47,6 +47,10 @@ class Video(Base):
     run_dir: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(String(16), nullable=False, default="topic")
+    # The paper a video was made from or asked for; "topic" videos from the studio have none.
+    paper_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("papers.paper_id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
