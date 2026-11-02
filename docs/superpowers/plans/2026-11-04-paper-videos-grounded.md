@@ -188,3 +188,21 @@ This task calls the real Gemini model against the evaluation account's stored pa
 - [ ] **Step 1:** Using the evaluation account's stored documents (`sample`, `attention`, `resnet`; ids from `rag_documents`), run for each paper one topic per level: a clearly covered topic, a weak one and an absent one from `backend/evaluation/data/*.json`. Print `check` results (level and similarity) and, for covered and weak topics, the grounded script with its citations.
 - [ ] **Step 2: Read the scripts against their cited passages.** For every number, symbol and claim in the narration, find it in the cited passage text. Record in the results note: coverage levels per topic (does the popup logic behave as the evaluation predicted), any claim or number not in the cited passages (this is the headline finding), citation quality (do the cited passages really support the section), and the cost (calls and seconds).
 - [ ] **Step 3: Commit** the results note "Record the live check of grounded scripts". Report in chat: what held, what did not, and what project 4 must catch.
+
+### Task 9: Close the gaps the live check found (added after Task 8)
+
+The live check (`docs/superpowers/results/2026-11-04-grounded-script-check.md`) showed two failures of the design's rules: (1) in the `weak` band, topics the paper does not mention at all (speech recognition, carbon, Cityscapes, ethics) still got a video about other content, introduced as "the paper only touches this topic briefly"; (2) when a passage refers to an equation whose text was not extracted, the model wrote the equation from its own memory (`y = F(x, {Wi}) + x` for ResNet), which is not copied from the paper.
+
+**Files:** Modify `backend/schemas/grounded.py`, `backend/services/grounded_lesson_service.py`, `backend/tests/test_grounded_lesson_service.py`.
+
+**Interfaces:**
+- `GroundedLesson` gains `covers_topic: bool` (false when the passages do not actually address what was asked) and `gap_note: str = ""` (one sentence saying what is missing).
+- `TopicNotAddressed(UngroundedLesson)`; `create` raises it at once (no retry) when `covers_topic` is false, with a message beginning `The paper does not address this topic` that includes `gap_note` and ends `You can still make a normal video that is not from the paper.`
+- `find_problems(lesson, passages: Mapping[str, str])` now takes passage id to the text the model was shown (label plus passage text); keys are the known ids. New problems, each a plain sentence naming the section: a number in a section's narration that is not in its cited passages (matched as a whole number, digits only, so `6` does not match `16`); an equation (a span around `=` or `:=`) not found, ignoring spaces, in its cited passages. Introduction and conclusion are checked against all passages.
+- Prompt gains the rule `Never write a formula or equation that is not printed in the passages; if a passage refers to an equation that is not shown, describe it in words or leave it out.` and an instruction to set `covers_topic` to false when the passages do not address the request.
+
+- [ ] **Step 1: Write the failing tests** (update the existing `lesson()` builder and the `find_problems` calls to the new signature first): `test_a_number_that_is_not_in_the_cited_passages_is_a_problem`, `test_numbers_in_the_cited_passages_are_fine`, `test_numbers_match_as_whole_numbers` (`6` vs a passage containing only `16`), `test_an_equation_that_is_not_in_the_cited_passages_is_a_problem`, `test_an_equation_copied_with_different_spacing_is_fine`, `test_introduction_and_conclusion_numbers_are_checked_against_all_passages`, `test_page_and_section_labels_count_as_text_the_model_was_shown`, `test_a_lesson_that_says_the_paper_does_not_address_the_topic_is_refused_without_a_retry`, `test_prompt_has_the_formula_rule_and_the_covers_topic_instruction`.
+- [ ] **Step 2: Run.** Expected: FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run the file, then the whole suite.** Expected: PASS.
+- [ ] **Step 5: Re-run the live check** for resnet-02, resnet-14 and the six absent probes (scratch scripts under `.superpowers/`), append the before/after to the results note, commit "Refuse lessons the passages do not support and check numbers and equations".

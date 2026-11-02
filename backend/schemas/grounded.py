@@ -10,6 +10,13 @@ class GroundedSection(BaseModel):
 
 
 class GroundedLesson(BaseModel):
+    covers_topic: bool = Field(
+        description="False when the passages do not actually address what the learner asked for."
+    )
+    gap_note: str = Field(
+        default="",
+        description="When covers_topic is false: one sentence saying what the paper does not contain.",
+    )
     title: str
     learning_objectives: list[str]
     introduction: str = Field(

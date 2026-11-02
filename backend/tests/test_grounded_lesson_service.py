@@ -2,7 +2,12 @@ import pytest
 
 from retrieval.evidence import Evidence
 from schemas.grounded import GroundedLesson, GroundedSection
-from services.grounded_lesson_service import GroundedLessonService, UngroundedLesson, find_problems
+from services.grounded_lesson_service import (
+    GroundedLessonService,
+    TopicNotAddressed,
+    UngroundedLesson,
+    find_problems,
+)
 
 
 def passage(text, page=3, section=("3 Method", "3.2 Attention"), chunk="c1"):
@@ -18,11 +23,15 @@ EVIDENCE = [
 ]
 
 
-def lesson(*sections, intro="This video covers what the paper says about the encoder."):
+def lesson(*sections, intro="This video covers what the paper says about the encoder.", conclusion="That is the encoder.",
+           covers_topic=True, gap_note=""):
     return GroundedLesson(
         title="The encoder", learning_objectives=["Know the encoder depth"], introduction=intro,
-        sections=list(sections), conclusion="That is the encoder.",
+        sections=list(sections), conclusion=conclusion, covers_topic=covers_topic, gap_note=gap_note,
     )
+
+
+SHOWN = {"P1": "The encoder is composed of a stack of N = 6 identical layers.", "P2": "We used 8 GPUs for 3.5 days."}
 
 
 def section(title="Depth", narration="The encoder has six identical layers.", ids=("P1",)):
@@ -99,19 +108,19 @@ def test_an_unknown_passage_id_is_rejected_then_retried_once_with_the_problem_in
 
 
 def test_a_section_without_citations_is_a_problem():
-    problems = find_problems(lesson(section("Depth", "Six layers.", ())), {"P1", "P2"})
+    problems = find_problems(lesson(section("Depth", "Six layers.", ())), SHOWN)
 
     assert len(problems) == 1 and "Depth" in problems[0]
 
 
 def test_an_empty_narration_is_a_problem():
-    problems = find_problems(lesson(section("Depth", "   ", ("P1",))), {"P1"})
+    problems = find_problems(lesson(section("Depth", "   ", ("P1",))), SHOWN)
 
     assert len(problems) == 1 and "Depth" in problems[0]
 
 
 def test_a_lesson_with_no_sections_is_a_problem():
-    assert find_problems(lesson(), {"P1"}) != []
+    assert find_problems(lesson(), SHOWN) != []
 
 
 def test_two_bad_attempts_raise_naming_the_problem():
@@ -142,3 +151,78 @@ def test_brief_mode_shortens_the_request_and_tells_the_model():
 
     assert result.lesson_request.duration_minutes == 2
     assert "The paper only touches this topic briefly; say so in the introduction and keep the video short." in llm.prompts[0]
+
+
+def narrated(text, ids=("P1",), **kwargs):
+    return lesson(section("Depth", text, ids), **kwargs)
+
+
+def test_a_number_that_is_not_in_the_cited_passages_is_a_problem():
+    problems = find_problems(narrated("The encoder has 7 layers."), SHOWN)
+
+    assert len(problems) == 1 and "Depth" in problems[0] and "7" in problems[0]
+
+
+def test_numbers_in_the_cited_passages_are_fine():
+    assert find_problems(narrated("The encoder stacks N = 6 layers."), SHOWN) == []
+    assert find_problems(narrated("Training used 8 GPUs for 3.5 days.", ("P2",)), SHOWN) == []
+
+
+def test_numbers_are_matched_as_whole_numbers():
+    shown = {"P1": "A model with 16 layers and 10.1 million parameters."}
+
+    assert find_problems(narrated("It has 6 layers."), shown) != []
+    assert find_problems(narrated("It has 0.1 million parameters."), shown) != []
+    assert find_problems(narrated("It has 16 layers and 10.1 million parameters."), shown) == []
+
+
+def test_an_equation_that_is_not_in_the_cited_passages_is_a_problem():
+    shown = {"P1": "We consider a building block defined as: Here x and y are the input and output."}
+
+    problems = find_problems(narrated("The block is y = F(x) + x."), shown)
+
+    assert len(problems) == 1 and "equation" in problems[0]
+
+
+def test_an_equation_copied_with_different_spacing_is_fine():
+    shown = {"P1": "we let the layers fit F(x) := H(x)-x, the residual."}
+
+    assert find_problems(narrated("The layers fit F(x) := H(x) - x."), shown) == []
+
+
+def test_introduction_and_conclusion_numbers_are_checked_against_all_passages():
+    ok = narrated("Six layers.", intro="It covers 8 GPUs.", conclusion="It took 3.5 days.")
+    bad = narrated("Six layers.", intro="It covers 99 GPUs.")
+
+    assert find_problems(ok, SHOWN) == []
+    problems = find_problems(bad, SHOWN)
+    assert len(problems) == 1 and "introduction" in problems[0].lower() and "99" in problems[0]
+
+
+def test_page_and_section_labels_count_as_text_the_model_was_shown():
+    shown = {"P1": "(page 5, section 3.2 Attention) Attention maps a query to an output."}
+
+    assert find_problems(narrated("Attention maps a query to an output.", intro="This covers section 3.2 on page 5."), shown) == []
+
+
+def test_a_lesson_that_says_the_paper_does_not_address_the_topic_is_refused_without_a_retry():
+    llm = FakeLLM(lesson(section(), covers_topic=False, gap_note="Nothing here is about speech recognition."))
+
+    with pytest.raises(TopicNotAddressed) as raised:
+        GroundedLessonService(llm).create("speech recognition", EVIDENCE)
+
+    message = str(raised.value)
+    assert message.startswith("The paper does not address this topic")
+    assert "Nothing here is about speech recognition." in message
+    assert message.endswith("You can still make a normal video that is not from the paper.")
+    assert isinstance(raised.value, UngroundedLesson) and len(llm.prompts) == 1
+
+
+def test_prompt_has_the_formula_rule_and_the_covers_topic_instruction():
+    llm = FakeLLM(lesson(section()))
+
+    GroundedLessonService(llm).create("the encoder", EVIDENCE)
+
+    prompt = llm.prompts[0]
+    assert "Never write a formula or equation that is not printed in the passages" in prompt
+    assert "covers_topic" in prompt and "false" in prompt

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -22,6 +23,14 @@ class UngroundedLesson(ValueError):
     """The model could not produce a lesson that is tied to the paper's passages."""
 
 
+class TopicNotAddressed(UngroundedLesson):
+    """The passages found do not address what was asked, so no paper video is made."""
+
+
+_NUMBER = re.compile(r"(?<![\d.,])\d+(?:[.,]\d+)*(?!\d)")
+_EQUATION = re.compile(r"\S+\s*(?::=|=)\s*\S+")
+
+
 @dataclass(frozen=True)
 class Passage:
     passage_id: str
@@ -37,21 +46,51 @@ class GroundedResult:
     section_citations: list[list[str]]       # passage ids per section, in section order
 
 
-def find_problems(lesson: GroundedLesson, known_ids: set[str]) -> list[str]:
-    """Plain sentences naming everything that stops a lesson from being tied to the given passages."""
+def find_problems(lesson: GroundedLesson, passages: Mapping[str, str]) -> list[str]:
+    """Plain sentences naming everything that stops a lesson from being tied to the given passages.
+
+    ``passages`` maps each passage id to the text the model was shown for it. Besides the citations, every number
+    and every equation the narration states must appear in the passages it cites (the introduction and conclusion
+    are checked against all passages): numbers and formulas are copied from the paper, never recalled.
+    """
     if not lesson.sections:
         return ["The lesson has no sections."]
+    everything = " ".join(passages.values())
     problems = []
     for section in lesson.sections:
+        title = section.section_title
         if not section.narration.strip():
-            problems.append(f"Section '{section.section_title}' has no narration.")
+            problems.append(f"Section '{title}' has no narration.")
         if not section.evidence_ids:
-            problems.append(f"Section '{section.section_title}' does not cite any passage.")
-        unknown = sorted(set(section.evidence_ids) - known_ids)
+            problems.append(f"Section '{title}' does not cite any passage.")
+        unknown = sorted(set(section.evidence_ids) - set(passages))
         if unknown:
-            problems.append(
-                f"Section '{section.section_title}' cites passages that were not given: {', '.join(unknown)}."
-            )
+            problems.append(f"Section '{title}' cites passages that were not given: {', '.join(unknown)}.")
+        cited = " ".join(passages[i] for i in section.evidence_ids if i in passages)
+        if cited and section.narration.strip():
+            problems += _unsupported(section.narration, cited, f"Section '{title}'", "its cited passages")
+    problems += _unsupported(lesson.introduction, everything, "The introduction", "any passage")
+    problems += _unsupported(lesson.conclusion, everything, "The conclusion", "any passage")
+    return problems
+
+
+def _unsupported(narration: str, haystack: str, who: str, where: str) -> list[str]:
+    problems = []
+    squashed = re.sub(r"\s+", " ", haystack)
+    numbers = []
+    for token in _NUMBER.findall(narration):
+        if token not in numbers and not re.search(r"(?<![\d.,])" + re.escape(token) + r"(?!\d)", squashed):
+            numbers.append(token)
+    if numbers:
+        problems.append(f"{who} states a number that is not in {where}: {', '.join(numbers)}.")
+    no_spaces = re.sub(r"\s+", "", haystack)
+    equations = []
+    for match in _EQUATION.findall(narration):
+        compact = re.sub(r"\s+", "", match).rstrip(".,;:")
+        if compact not in no_spaces and match.rstrip(".,;:") not in equations:
+            equations.append(match.rstrip(".,;:"))
+    if equations:
+        problems.append(f"{who} states an equation that is not in {where}: {'; '.join(equations)}.")
     return problems
 
 
@@ -67,7 +106,7 @@ class GroundedLessonService:
         ]
         if not passages:
             raise UngroundedLesson("The paper has no readable passages to base a video on.")
-        known_ids = {passage.passage_id for passage in passages}
+        shown = {passage.passage_id: _render(passage) for passage in passages}
 
         problems: list[str] = []
         for _ in range(self.max_attempts):
@@ -75,7 +114,20 @@ class GroundedLessonService:
             result = self.llm_service.generate_structured(prompt, GroundedLesson)
             if not isinstance(result, GroundedLesson):
                 raise TypeError("The grounded lesson writer did not return a GroundedLesson.")
-            problems = find_problems(result, known_ids)
+            if not result.covers_topic:
+                note = result.gap_note.strip()
+                raise TopicNotAddressed(
+                    " ".join(
+                        part
+                        for part in (
+                            "The paper does not address this topic.",
+                            note,
+                            "You can still make a normal video that is not from the paper.",
+                        )
+                        if part
+                    )
+                )
+            problems = find_problems(result, shown)
             if not problems:
                 return self._result(topic, result, passages, brief)
         raise UngroundedLesson("The lesson could not be tied to the paper: " + " ".join(problems))
@@ -118,9 +170,13 @@ class GroundedLessonService:
             "5. Every section must list the ids of the passages it is based on.",
             "6. The introduction must say which part of the paper the video covers.",
             "7. Write for a learner who has not read the paper, in plain spoken language.",
+            "8. Never write a formula or equation that is not printed in the passages; if a passage refers to an equation "
+            "that is not shown, describe it in words or leave it out.",
+            "9. If the passages do not actually address what the learner asked for, set covers_topic to false and say in "
+            "gap_note what is missing; do not write a lesson about other content in that case.",
         ]
         if brief:
-            lines.append("8. The paper only touches this topic briefly; say so in the introduction and keep the video short.")
+            lines.append("10. The paper only touches this topic briefly; say so in the introduction and keep the video short.")
         lines += [
             "",
             "Passages from the paper:",
