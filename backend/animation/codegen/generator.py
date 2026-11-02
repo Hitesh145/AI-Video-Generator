@@ -337,6 +337,7 @@ Rules:
 16. Text longer than 28 characters must be split over lines or scaled with scale_to_fit_width.
 17. Call fit_in_frame on every group you build.
 18. When a beat is about something spatial (layers of a network, matrices as grids, vectors, planes, stacks), you may use class SectionScene(ThreeDScene): follow the 3D example; keep labels fixed in frame.
+19. Keep text clear of arrows and lines: place a label beside an arrow with next_to(arrow, UP, buff=0.2), never on it.
 
 Examples of good scenes (they use 3 beats of 2.5 s each):
 

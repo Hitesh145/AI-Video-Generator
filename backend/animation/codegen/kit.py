@@ -8,7 +8,7 @@ import json
 import os
 import re
 
-from manim import DOWN, LEFT, UP, RIGHT, MarkupText, Mobject, Text, ThreeDScene, VGroup, config
+from manim import DOWN, LEFT, UP, RIGHT, MarkupText, Mobject, Text, ThreeDScene, VGroup, VMobject, config
 
 
 BACKGROUND = "#0F172A"
@@ -71,6 +71,8 @@ def bullet_list(items: list[str], font_size: int = 28) -> VGroup:
 OVERLAP_SHARE = 0.10          # two texts overlap when their boxes share more than this part of the smaller box
 EDGE_TOLERANCE = 0.05         # frame units
 MIN_VISIBLE_OPACITY = 0.05    # fully faded text is not on screen
+TOUCH_MARGIN = 0.05           # a line within this distance of a text box counts as touching it
+OUTLINE_SAMPLES = 24
 
 
 def _text_leaves(mobjects):
@@ -80,6 +82,23 @@ def _text_leaves(mobjects):
             yield item
         else:
             yield from _text_leaves(item.submobjects)
+
+
+def _shape_leaves(mobjects):
+    """Every non-text VMobject that has an outline of its own (lines, arrows, shapes); texts are skipped."""
+    for item in mobjects:
+        if isinstance(item, (Text, MarkupText)):
+            continue
+        if isinstance(item, VMobject) and item.has_points():
+            yield item
+        yield from _shape_leaves(item.submobjects)
+
+
+def _outline_points(item):
+    try:
+        return [item.point_from_proportion(step / OUTLINE_SAMPLES) for step in range(OUTLINE_SAMPLES + 1)]
+    except Exception:
+        return list(item.get_anchors())
 
 
 def _label(item) -> str:
@@ -113,6 +132,18 @@ def layout_issues(scene) -> list[str]:
             issues.append(f"'{_label(leaf)}' leaves the screen")
         elif bottom < safe_bottom - EDGE_TOLERANCE:
             issues.append(f"'{_label(leaf)}' covers the subtitle area")
+
+    shapes = [
+        shape for shape in _shape_leaves(roots)
+        if shape.get_stroke_opacity() >= MIN_VISIBLE_OPACITY or shape.get_fill_opacity() >= MIN_VISIBLE_OPACITY
+    ]
+    outlines = [_outline_points(shape) for shape in shapes]
+    for leaf, (left, right, bottom, top) in zip(leaves, boxes):
+        inner = (left - TOUCH_MARGIN, right + TOUCH_MARGIN, bottom - TOUCH_MARGIN, top + TOUCH_MARGIN)
+        for points in outlines:
+            if any(inner[0] < point[0] < inner[1] and inner[2] < point[1] < inner[3] for point in points):
+                issues.append(f"'{_label(leaf)}' is crossed by or touching a line, arrow or shape edge")
+                break
 
     for first in range(len(leaves)):
         for second in range(first + 1, len(leaves)):

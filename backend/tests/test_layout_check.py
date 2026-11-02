@@ -8,7 +8,7 @@ from animation.schemas import RenderSection
 from animation.storyboard import PlannedBeat
 from animation.templates.render import RenderError
 from fakes import FakeLLM
-from manim import DOWN, LEFT, RIGHT, UP, Rectangle, Text, ThreeDScene, VGroup
+from manim import DOWN, LEFT, RIGHT, UP, Arrow, Circle, Line, Rectangle, Text, ThreeDScene, VGroup
 
 SECTION = RenderSection(index=2, title="Why it matters", narration="Algorithms are everywhere.")
 BEATS = [PlannedBeat("Algorithms are everywhere in daily life.", "a ring of icons"),
@@ -105,6 +105,69 @@ def test_the_beat_clock_report_rows_carry_the_layout_issues(tmp_path, monkeypatc
 
     row = json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))[0]
     assert len(row["layout"]) == 1 and "overlap" in row["layout"][0]
+
+
+# ---------------------------------------------------------------- text crossed by lines, arrows and shape edges
+def test_a_line_through_text_is_reported():
+    issues = kit.layout_issues(Scene(text("Label"), Line([-3, 0, 0], [3, 0, 0])))
+
+    assert len(issues) == 1 and "'Label'" in issues[0] and "crossed" in issues[0]
+
+
+def test_an_arrow_running_through_a_label_is_reported():
+    issues = kit.layout_issues(Scene(Arrow([-3, 0.1, 0], [3, 0.1, 0]), text("ACK")))
+
+    assert len(issues) == 1 and "'ACK'" in issues[0] and "crossed" in issues[0]
+
+
+def test_a_diagonal_arrow_that_misses_the_text_is_fine():
+    # the text sits inside the arrow's bounding box but far from its path
+    assert kit.layout_issues(Scene(Arrow([-3, -2, 0], [3, 2, 0]), text("Far", x=2.5, y=-1.5))) == []
+
+
+def test_a_shape_edge_cutting_through_text_is_reported():
+    box = Rectangle(width=1.2, height=1.0).move_to([0, 0, 0])
+    label = text("Long label here", x=0.6)           # straddles the right edge of the box
+
+    issues = kit.layout_issues(Scene(box, label))
+
+    assert len(issues) == 1 and "crossed" in issues[0]
+
+
+def test_a_line_grazing_the_edge_of_a_label_is_reported_as_touching():
+    label = text("ACK")
+    just_above = label.get_top()[1] + 0.02              # closer than the 0.05 margin, but not through the text
+
+    issues = kit.layout_issues(Scene(label, Line([-3, just_above, 0], [3, just_above, 0])))
+
+    assert len(issues) == 1 and "touching" in issues[0]
+
+
+def test_a_line_a_comfortable_distance_from_a_label_is_fine():
+    label = text("ACK")
+    clear = label.get_top()[1] + 0.3
+
+    assert kit.layout_issues(Scene(label, Line([-3, clear, 0], [3, clear, 0]))) == []
+
+
+def test_text_fully_inside_a_circle_or_box_is_fine():
+    assert kit.layout_issues(Scene(Circle(radius=1.5), text("Inside"))) == []
+    assert kit.layout_issues(Scene(Rectangle(width=4, height=1.5), text("Inside"))) == []
+
+
+def test_an_invisible_line_is_ignored():
+    line = Line([-3, 0, 0], [3, 0, 0])
+    line.set_stroke(opacity=0)
+    line.set_fill(opacity=0)
+
+    assert kit.layout_issues(Scene(text("Label"), line)) == []
+
+
+def test_the_codegen_prompt_asks_for_labels_beside_arrows():
+    llm = FakeLLM([{"code": GOOD_CODE}])
+    run(llm, Renderer({1: rows([], [])}), Path(__import__("tempfile").mkdtemp()))
+
+    assert "Keep text clear of arrows and lines: place a label beside an arrow with next_to(arrow, UP, buff=0.2), never on it." in " ".join(llm.prompts[0].split())
 
 
 # ---------------------------------------------------------------- generator.check_layout
