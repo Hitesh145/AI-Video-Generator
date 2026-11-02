@@ -232,7 +232,7 @@ def test_check_beat_report_unreadable_is_hard(tmp_path):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("example", ["title_card.py", "process_flow.py"])
+@pytest.mark.parametrize("example", ["title_card.py", "process_flow.py", "three_d_layers.py"])
 def test_examples_render_for_real_on_the_beat_clock(tmp_path, example):
     code = (EXAMPLES_DIR / example).read_text(encoding="utf-8")
     beats = [PlannedBeat("one", "a"), PlannedBeat("two", "b"), PlannedBeat("three", "c")]
@@ -285,3 +285,27 @@ def test_validator_problems_survive_into_the_final_error(tmp_path):
         run(llm, RecordingRenderer(), tmp_path)
 
     assert "import of 'os' is not allowed" in info.value.errors[0]
+
+
+def test_the_3d_example_exists_and_passes_the_validator():
+    code = (EXAMPLES_DIR / "three_d_layers.py").read_text(encoding="utf-8")
+
+    assert "class SectionScene(ThreeDScene):" in code
+    assert "clock = BeatClock(self)" in code and code.count("clock.end_beat()") == 3
+    assert validate_scene_code(code) == []
+
+
+def test_a_threed_scene_with_one_class_named_section_scene_is_valid():
+    code = "from manim import *\nfrom kit import *\n\n\nclass SectionScene(ThreeDScene):\n    def construct(self):\n        pass\n"
+
+    assert validate_scene_code(code) == []
+
+
+def test_the_codegen_prompt_mentions_the_3d_rule_and_includes_the_3d_example(tmp_path):
+    llm = FakeLLM([{"code": GOOD_CODE}])
+    run(llm, RecordingRenderer(), tmp_path)
+
+    prompt = " ".join(llm.prompts[0].split())
+    assert ("When a beat is about something spatial (layers of a network, matrices as grids, vectors, planes, stacks), "
+            "you may use class SectionScene(ThreeDScene): follow the 3D example; keep labels fixed in frame.") in prompt
+    assert "--- three_d_layers.py ---" in prompt

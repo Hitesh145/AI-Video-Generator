@@ -313,7 +313,7 @@ Style kit available from `kit`:
 - BeatClock(self) -> the beat clock; clock.end_beat() waits until the end of the current beat's audio
 
 Rules:
-1. Define exactly one class, `class SectionScene(Scene):`, with a `construct(self)` method. No other classes.
+1. Define exactly one class, `class SectionScene(Scene):` (or `SectionScene(ThreeDScene)` as in rule 18), with a `construct(self)` method. No other classes.
 2. Only import from manim, kit, math, random and numpy.
 3. Use Text or MarkupText for all text. Never use Tex, MathTex or anything that needs LaTeX.
 4. No file, network or OS access. No dunder names, getattr/setattr, eval/exec or open.
@@ -336,6 +336,7 @@ Rules:
 15. Fade out or remove an object before drawing something else in its place.
 16. Text longer than 28 characters must be split over lines or scaled with scale_to_fit_width.
 17. Call fit_in_frame on every group you build.
+18. When a beat is about something spatial (layers of a network, matrices as grids, vectors, planes, stacks), you may use class SectionScene(ThreeDScene): follow the 3D example; keep labels fixed in frame.
 
 Examples of good scenes (they use 3 beats of 2.5 s each):
 
