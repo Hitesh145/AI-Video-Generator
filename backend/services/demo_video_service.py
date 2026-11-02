@@ -33,6 +33,15 @@ class KnowledgeAgent(Protocol):
         ...
 
 
+class TermReviewer(Protocol):
+    def improve(
+        self,
+        lesson_request: LessonRequest,
+        lesson_script: LessonScript,
+    ) -> tuple[LessonScript, list[str]]:
+        ...
+
+
 class LessonPlanner(Protocol):
     def create_lesson_plan(self, lesson_request: LessonRequest) -> LessonPlan:
         ...
@@ -72,6 +81,7 @@ class DemoVideoService:
         section_animator: SectionAnimatorLike,
         output_root: Path = Path("output"),
         knowledge_agent_service: KnowledgeAgent | None = None,
+        term_review_service: TermReviewer | None = None,
         enable_subtitles: bool = True,
         concat_clips: ConcatClips = concat_clips,
         build_audio: BuildAudio = concat_audio_padded,
@@ -83,6 +93,7 @@ class DemoVideoService:
         self.section_animator = section_animator
         self.output_root = output_root
         self.knowledge_agent_service = knowledge_agent_service
+        self.term_review_service = term_review_service
         self.enable_subtitles = enable_subtitles
         self.concat_clips = concat_clips
         self.build_audio = build_audio
@@ -119,6 +130,11 @@ class DemoVideoService:
                 lesson_plan,
                 knowledge_base=knowledge_base,
             )
+        if self.term_review_service is not None:
+            report_stage("script", "Checking that every term is explained")
+            with llm_step("term review"):
+                lesson_script, unexplained = self.term_review_service.improve(lesson_request, lesson_script)
+            qc_warnings.extend(f"Term not explained: {term}" for term in unexplained)
 
         return self.render_lesson(
             lesson_request, lesson_plan, lesson_script, knowledge_base=knowledge_base, qc_warnings=qc_warnings

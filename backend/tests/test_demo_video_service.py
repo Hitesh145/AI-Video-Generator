@@ -239,3 +239,64 @@ def test_the_demo_service_passes_the_knowledge_base_to_the_writer(tmp_path):
     service.generate_demo_video(UserLessonRequest(request="Explain binary search"))
 
     assert seen["knowledge_base"] is knowledge
+
+
+def _service_with_reviewer(tmp_path, reviewer, animator):
+    return DemoVideoService(
+        lesson_analyzer_service=Analyzer(), lesson_planner_service=Planner(), script_writer_service=Writer(),
+        section_animator=animator, output_root=tmp_path, term_review_service=reviewer,
+        concat_clips=lambda paths, out: out, build_audio=lambda paths, durations, out: out, mux=_mux,
+    )
+
+
+def test_the_demo_service_uses_the_improved_script_and_records_warnings_for_what_stays_unexplained(tmp_path):
+    improved = LessonScript(introduction="Hi.", sections=[ScriptSection(section_title="How", narration="Halve it. A midpoint is the middle.")],
+                            conclusion="Bye.")
+    calls = []
+
+    class Reviewer:
+        def improve(self, lesson_request, lesson_script):
+            calls.append(lesson_script)
+            return improved, ["closure"]
+
+    animator = Animator()
+    service = _service_with_reviewer(tmp_path, Reviewer(), animator)
+
+    response = service.generate_demo_video(UserLessonRequest(request="Explain binary search"))
+
+    assert len(calls) == 1 and response.lesson_script == improved
+    assert "Term not explained: closure" in response.qc_warnings
+    assert [s.narration for s in animator.sections][1] == "Halve it. A midpoint is the middle."
+
+
+def test_a_reviewer_error_fails_the_run_instead_of_rendering_an_unreviewed_script(tmp_path):
+    class Reviewer:
+        def improve(self, lesson_request, lesson_script):
+            raise RuntimeError("model down")
+
+    animator = Animator()
+    service = _service_with_reviewer(tmp_path, Reviewer(), animator)
+
+    try:
+        service.generate_demo_video(UserLessonRequest(request="Explain binary search"))
+    except RuntimeError as exc:
+        assert "model down" in str(exc)
+    else:
+        raise AssertionError("the run should have failed")
+    assert animator.sections is None
+
+
+def test_the_review_is_reported_as_part_of_the_script_stage(tmp_path):
+    seen = []
+
+    class Reviewer:
+        def improve(self, lesson_request, lesson_script):
+            return lesson_script, []
+
+    progress = CapturingProgress()
+    service = _service_with_reviewer(tmp_path, Reviewer(), Animator())
+    recorder = LLMCallRecorder("t", fallback_root=tmp_path)
+    with run_scope(RunContext(recorder, progress)):
+        service.generate_demo_video(UserLessonRequest(request="Explain binary search"))
+
+    assert ("script", "Checking that every term is explained") in progress.stages

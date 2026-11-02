@@ -51,6 +51,7 @@ from services.knowledge_agent_service import KnowledgeAgentService
 from services.lesson_analyzer_service import LessonAnalyzerService
 from services.lesson_planner_service import LessonPlannerService
 from services.script_writer_service import ScriptWriterService
+from services.term_review_service import TermReviewService
 from services.tts_service import EdgeTTSService, SilentTTSService
 from services.visual_planner_service import VisualPlannerService
 
@@ -122,6 +123,7 @@ demo_video_service = DemoVideoService(
     section_animator=section_animator,
     output_root=output_root,
     knowledge_agent_service=knowledge_agent_service,
+    term_review_service=TermReviewService(llm_service),
 )
 job_service = JobService(
     demo_video_service.generate_demo_video,
