@@ -109,10 +109,20 @@ class JobService:
         self._jobs: dict[str, tuple[JobProgress, threading.Thread, str]] = {}
         self._lock = threading.Lock()
 
-    def start(self, request: UserLessonRequest, user_id: str) -> str:
+    def start(
+        self,
+        request: UserLessonRequest,
+        user_id: str,
+        *,
+        pipeline: Pipeline | None = None,
+        on_complete: OnComplete | None = None,
+    ) -> str:
+        """Run a job in the background. ``pipeline`` and ``on_complete`` replace the service defaults for this job only."""
         job_id = uuid4().hex[:12]
         progress = JobProgress(job_id)
-        thread = threading.Thread(target=self._run, args=(progress, request, user_id), daemon=True, name=f"job-{job_id}")
+        thread = threading.Thread(
+            target=self._run, args=(progress, request, user_id, pipeline, on_complete), daemon=True, name=f"job-{job_id}"
+        )
         with self._lock:
             self._jobs[job_id] = (progress, thread, user_id)
         thread.start()
@@ -134,9 +144,16 @@ class JobService:
         """Run the pipeline in the calling thread (the old endpoint), still writing the LLM log."""
         return self._execute(NullProgress(), request, user_id)
 
-    def _run(self, progress: JobProgress, request: UserLessonRequest, user_id: str) -> None:
+    def _run(
+        self,
+        progress: JobProgress,
+        request: UserLessonRequest,
+        user_id: str,
+        pipeline: Pipeline | None = None,
+        on_complete: OnComplete | None = None,
+    ) -> None:
         try:
-            result = self._execute(progress, request, user_id)
+            result = self._execute(progress, request, user_id, pipeline, on_complete)
         except Exception as exc:
             logger.exception("Job %s failed", progress.job_id)
             progress.fail(exc)
@@ -144,14 +161,20 @@ class JobService:
         progress.complete(result)
 
     def _execute(
-        self, progress: NullProgress | JobProgress, request: UserLessonRequest, user_id: str
+        self,
+        progress: NullProgress | JobProgress,
+        request: UserLessonRequest,
+        user_id: str,
+        pipeline: Pipeline | None = None,
+        on_complete: OnComplete | None = None,
     ) -> DemoVideoResponse:
         recorder = LLMCallRecorder(request.request, fallback_root=self.output_root)
         try:
             with run_scope(RunContext(recorder, progress)):
-                result = self.pipeline(request)
-            if self.on_complete is not None:
-                self.on_complete(user_id, result)
+                result = (pipeline or self.pipeline)(request)
+            finish = on_complete or self.on_complete
+            if finish is not None:
+                finish(user_id, result)
         except Exception as exc:
             recorder.finish("failed", f"{type(exc).__name__}: {exc}")
             raise

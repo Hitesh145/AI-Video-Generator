@@ -287,3 +287,27 @@ def test_a_failing_on_complete_fails_the_job_and_the_log(tmp_path):
     assert status.status == "failed"
     assert status.error.message == "RuntimeError: cannot record video"
     assert json.loads((folder / "llm_calls.json").read_text(encoding="utf-8"))["status"] == "failed"
+
+
+def test_a_per_job_pipeline_and_on_complete_replace_the_defaults_for_that_job_only(tmp_path):
+    default_calls, override_calls, completed = [], [], []
+
+    def default_pipeline(request):
+        default_calls.append(request.request)
+        return make_response()
+
+    def override_pipeline(request):
+        override_calls.append(request.request)
+        return make_response()
+
+    service = JobService(default_pipeline, tmp_path, on_complete=lambda user, response: completed.append(("default", user)))
+
+    first = service.start(REQUEST, USER, pipeline=override_pipeline,
+                          on_complete=lambda user, response: completed.append(("override", user)))
+    service.wait(first, timeout=10)
+    second = service.start(REQUEST, USER)
+    service.wait(second, timeout=10)
+
+    assert override_calls == ["Explain binary search"] and default_calls == ["Explain binary search"]
+    assert completed == [("override", USER), ("default", USER)]
+    assert service.get(first, "someone-else") is None
