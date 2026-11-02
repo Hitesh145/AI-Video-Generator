@@ -1,0 +1,21 @@
+{
+  "papers": [
+    {
+      "key": "sample",
+      "title": "Research paper on artificial intelligence and its applications (the owner's sample, local only)",
+      "local_path": "IJRTI2304061.pdf"
+    },
+    {
+      "key": "attention",
+      "title": "Attention Is All You Need",
+      "url": "https://arxiv.org/pdf/1706.03762",
+      "sha256": null
+    },
+    {
+      "key": "resnet",
+      "title": "Deep Residual Learning for Image Recognition",
+      "url": "https://arxiv.org/pdf/1512.03385",
+      "sha256": null
+    }
+  ]
+}
