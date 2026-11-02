@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -48,6 +48,7 @@ class GroundedResult:
     lesson_script: LessonScript
     passages: list[Passage]
     section_citations: list[list[str]]       # passage ids per section, in section order
+    section_background: list[str] = field(default_factory=list)   # general-knowledge definitions, per section ('' = none)
 
 
 def find_problems(
@@ -76,6 +77,7 @@ def find_problems(
         unknown = sorted(set(section.evidence_ids) - set(passages))
         if unknown:
             problems.append(f"Section '{title}' cites passages that were not given: {', '.join(unknown)}.")
+        problems += _background_problems(section.background, title)
         cited = " ".join(passages[i] for i in section.evidence_ids if i in passages)
         cited_labels = " ".join(labels[i] for i in section.evidence_ids if i in labels)
         if cited and section.narration.strip():
@@ -83,6 +85,18 @@ def find_problems(
     problems += _unsupported(lesson.introduction, everything, every_label, "The introduction", "any passage")
     problems += _unsupported(lesson.conclusion, everything, every_label, "The conclusion", "any passage")
     return problems
+
+
+def _background_problems(background: str, title: str) -> list[str]:
+    """Background is general-knowledge definitions only: no figures, no formulas, at most two sentences."""
+    text = background.strip()
+    if not text:
+        return []
+    if re.search(r"\d", text) or "=" in text:
+        return [f"Section '{title}' background must be plain definitions without numbers or formulas."]
+    if len([part for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]) > 2:
+        return [f"Section '{title}' background must be at most two sentences."]
+    return []
 
 
 def _compact(text: str) -> str:
@@ -183,7 +197,10 @@ class GroundedLessonService:
             ],
             conclusion=lesson.conclusion,
         )
-        return GroundedResult(request, plan, script, passages, [list(s.evidence_ids) for s in lesson.sections])
+        return GroundedResult(
+            request, plan, script, passages, [list(s.evidence_ids) for s in lesson.sections],
+            [s.background.strip() for s in lesson.sections],
+        )
 
     @staticmethod
     def _prompt(
@@ -205,9 +222,10 @@ class GroundedLessonService:
             "that is not shown, describe it in words or leave it out.",
             "9. If the passages do not actually address what the learner asked for, set covers_topic to false and say in "
             "gap_note what is missing; do not write a lesson about other content in that case.",
+            "10. If a term in your narration is not defined by the passages, you may define it in the section's background field in at most two plain sentences from general knowledge; never put numbers, formulas or claims about this paper there.",
         ]
         if brief:
-            lines.append("10. The paper may only touch this topic briefly; if so, say so in the introduction and keep the video short.")
+            lines.append("11. The paper may only touch this topic briefly; if so, say so in the introduction and keep the video short.")
         lines += [
             "",
             "Passages from the paper:",

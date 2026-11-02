@@ -281,3 +281,36 @@ def test_no_feedback_adds_no_feedback_block():
     GroundedLessonService(llm).create("the encoder", EVIDENCE)
 
     assert "A previous version" not in llm.prompts[0]
+
+
+def with_background(text, narration="The encoder has six identical layers.", ids=("P1",)):
+    return lesson(GroundedSection(section_title="Depth", narration=narration, evidence_ids=list(ids), background=text))
+
+
+def test_background_is_stored_parallel_to_the_sections():
+    llm = FakeLLM(lesson(section("Depth"), GroundedSection(section_title="Two", narration="Six layers.",
+                                                           evidence_ids=["P1"], background="A layer is one processing step.")))
+
+    result = GroundedLessonService(llm).create("the encoder", EVIDENCE)
+
+    assert result.section_background == ["", "A layer is one processing step."]
+
+
+def test_background_with_digits_or_an_equation_or_three_sentences_is_a_problem():
+    for bad in ("A layer has 6 units.", "A layer computes y = Wx.", "One. Two. Three."):
+        problems = find_problems(with_background(bad), SHOWN)
+        assert len(problems) == 1 and "background" in problems[0].lower() and "Depth" in problems[0], bad
+
+
+def test_plain_background_of_up_to_two_sentences_is_fine():
+    assert find_problems(with_background("A layer is one step. It transforms its input."), SHOWN) == []
+
+
+def test_the_grounded_prompt_allows_marked_background():
+    llm = FakeLLM(lesson(section()))
+
+    GroundedLessonService(llm).create("the encoder", EVIDENCE)
+
+    assert ("If a term in your narration is not defined by the passages, you may define it in the section's background "
+            "field in at most two plain sentences from general knowledge; never put numbers, formulas or claims about "
+            "this paper there.") in " ".join(llm.prompts[0].split())

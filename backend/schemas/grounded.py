@@ -7,6 +7,13 @@ class GroundedSection(BaseModel):
     evidence_ids: list[str] = Field(
         description="Ids of the numbered passages (for example P1) this section is based on."
     )
+    background: str = Field(
+        default="",
+        description=(
+            "At most two plain sentences defining, from general knowledge, terms this section uses that its "
+            "passages do not define. No numbers, no formulas, no claims about the paper."
+        ),
+    )
 
 
 class GroundedLesson(BaseModel):

@@ -65,8 +65,9 @@ class FakeSearcher:
 
 
 class FakeGrounded:
-    def __init__(self, error=None):
+    def __init__(self, error=None, background=()):
         self.error = error
+        self.background = list(background)
         self.calls = []
 
     def create(self, topic, evidence, brief=False, feedback=()):
@@ -78,7 +79,7 @@ class FakeGrounded:
             lesson_request=LessonRequest(topic=topic, audience="a", goal="g", duration_minutes=2, teaching_depth="intro"),
             lesson_plan=LessonPlan(title="The encoder", learning_objectives=["x"], sections=["How"]),
             lesson_script=LessonScript(introduction="Intro.", sections=[ScriptSection(section_title="How", narration="First claim. Second claim.")], conclusion="Outro."),
-            passages=passages, section_citations=[["P1", "P2"]],
+            passages=passages, section_citations=[["P1", "P2"]], section_background=list(self.background),
         )
 
 
@@ -96,9 +97,11 @@ class FakeChecker:
         self.reports = list(reports) or [passing_report()]
         self.error = error
         self.calls = 0
+        self.seen = []
 
     def check(self, result):
         self.calls += 1
+        self.seen.append(result)
         if self.error:
             raise self.error
         return self.reports.pop(0) if len(self.reports) > 1 else self.reports[0]
@@ -108,10 +111,12 @@ class FakeDemo:
     def __init__(self, root):
         self.root = root
         self.rendered = []
+        self.scripts = []
         self.generated = []
 
     def render_lesson(self, lesson_request, lesson_plan, lesson_script, knowledge_base=None, qc_warnings=None, extra_artifacts=None, allow_trace=True):
         self.allow_trace = allow_trace
+        self.scripts.append(lesson_script)
         run = self.root / f"run-{uuid4().hex[:6]}"
         run.mkdir()
         self.rendered.append((qc_warnings, dict(extra_artifacts or {})))
@@ -393,3 +398,43 @@ def test_a_failed_rewrite_is_recorded_as_a_regeneration_attempt(world):
 
     saved = json.loads(world.demo.rendered[0][1]["claim_check.json"])
     assert saved["regenerated"] is True and saved["used_rewrite"] is False
+
+
+def test_the_final_narration_starts_with_the_background_marker(world):
+    service = world.build(grounded=FakeGrounded(background=["A claim is a statement."]))
+
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    narration = world.demo.scripts[0].sections[0].narration
+    assert narration == "Some background that is not from the paper: A claim is a statement. First claim. Second claim."
+
+
+def test_the_note_is_added_only_when_background_is_used(world):
+    note = "Sentences introduced as background are general knowledge, not from the paper, and are not checked against it."
+    service = world.build(grounded=FakeGrounded(background=["A claim is a statement."]))
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+    assert note in world.demo.rendered[0][0]
+
+    other = world.build()
+    finish(world, other.start(world.me, "paper-1", "the encoder", "paper"))
+    assert note not in world.demo.rendered[1][0]
+    assert world.demo.scripts[1].sections[0].narration == "First claim. Second claim."
+
+
+def test_the_claim_checker_never_receives_the_background_text(world):
+    service = world.build(grounded=FakeGrounded(background=["A claim is a statement."]))
+
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    for seen in world.checker.seen:
+        text = " ".join([seen.lesson_script.introduction, *(s.narration for s in seen.lesson_script.sections)])
+        assert "A claim is a statement." not in text and "Some background" not in text
+
+
+def test_claim_check_json_lists_the_background(world):
+    service = world.build(grounded=FakeGrounded(background=["A claim is a statement."]))
+
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    saved = json.loads(world.demo.rendered[0][1]["claim_check.json"])
+    assert saved["background"] == [{"section": "How", "text": "A claim is a statement."}]

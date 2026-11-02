@@ -340,3 +340,26 @@ def test_a_failed_lesson_title_or_section_title_is_replaced_by_a_neutral_one():
     assert fixed.lesson_script.sections[0].section_title == "Part 1"
     assert fixed.lesson_plan.sections[0] == "Part 1"
     assert fixed.section_citations == [["P1"], ["P2"]]
+
+
+def test_background_is_carried_through_apply_report_and_dropped_with_its_section():
+    base = result(sections=(("Depth", "Depth claim.", ["P1"]), ("Training", "Training claim.", ["P2"])))
+    base = GroundedResult(
+        lesson_request=base.lesson_request, lesson_plan=base.lesson_plan, lesson_script=base.lesson_script,
+        passages=base.passages, section_citations=base.section_citations,
+        section_background=["About depth.", "About training."],
+    )
+    report = ClaimReport([failing("Training", "Training claim.")])
+
+    fixed, _ = apply_report(base, report)
+
+    assert fixed.section_background == ["About depth."]
+    assert [s.section_title for s in fixed.lesson_script.sections] == ["Depth"]
+
+
+def test_a_result_without_background_still_works_in_apply_report():
+    report = ClaimReport([failing("Training", "Training took twelve hours.")])
+
+    fixed, _ = apply_report(THREE, report)
+
+    assert fixed.section_background == []

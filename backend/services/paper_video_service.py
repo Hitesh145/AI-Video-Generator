@@ -14,7 +14,7 @@ from papers.repository import PaperRecord
 from retrieval.coverage import Coverage, assess_coverage
 from retrieval.evidence import Evidence
 from schemas.demo import DemoVideoResponse
-from schemas.lesson import UserLessonRequest
+from schemas.lesson import LessonScript, ScriptSection, UserLessonRequest
 from services.claim_checker import ClaimReport, apply_report
 from services.grounded_lesson_service import GroundedResult, UngroundedLesson
 from services.job_service import JobService
@@ -23,6 +23,8 @@ from services.run_context import llm_step, report_stage
 Mode = Literal["paper", "general"]
 CoverageCheck = Coverage
 
+BACKGROUND_MARKER = "Some background that is not from the paper:"
+BACKGROUND_NOTE = "Sentences introduced as background are general knowledge, not from the paper, and are not checked against it."
 CHECKED_NOTE = "Each sentence was checked against the passages it cites by a second model pass; this is not a guarantee."
 BRIEF_WARNING = "The paper may cover this topic only briefly."
 
@@ -209,6 +211,9 @@ class PaperVideoService:
                 f"{count} sentence{'s' if count != 1 else ''} the paper did not support "
                 f"{'were' if count != 1 else 'was'} removed."
             )
+        script, background = _with_background(result)
+        if background:
+            warnings.append(BACKGROUND_NOTE)
         if coverage.level == "weak":
             warnings.append(BRIEF_WARNING)
         evidence_file = [
@@ -227,7 +232,7 @@ class PaperVideoService:
             for section, ids in zip(result.lesson_script.sections, result.section_citations)
         }
         return self.demo.render_lesson(
-            result.lesson_request, result.lesson_plan, result.lesson_script,
+            result.lesson_request, result.lesson_plan, script,
             qc_warnings=warnings,
             allow_trace=False,          # the trace path would re-narrate sections with text nobody checked
             extra_artifacts={
@@ -240,11 +245,28 @@ class PaperVideoService:
                         "used_rewrite": used_rewrite,
                         "checks": [_check_as_dict(check) for check in report.checks],
                         "removed": [_check_as_dict(check) for check in removed],
+                        "background": background,
                     },
                     indent=2, ensure_ascii=False,
                 ),
             },
         )
+
+
+def _with_background(result: GroundedResult):
+    """The script to speak: each section's marked general-knowledge background first, then the checked narration."""
+    script = result.lesson_script
+    notes = list(result.section_background)
+    sections, used = [], []
+    for index, section in enumerate(script.sections):
+        text = notes[index].strip() if index < len(notes) else ""
+        if text:
+            used.append({"section": section.section_title, "text": text})
+            narration = f"{BACKGROUND_MARKER} {text} {section.narration}"
+        else:
+            narration = section.narration
+        sections.append(ScriptSection(section_title=section.section_title, narration=narration))
+    return LessonScript(introduction=script.introduction, sections=sections, conclusion=script.conclusion), used
 
 
 def _check_as_dict(check) -> dict:

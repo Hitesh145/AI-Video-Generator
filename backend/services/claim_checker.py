@@ -218,7 +218,7 @@ def apply_report(result: GroundedResult, report: ClaimReport) -> tuple[GroundedR
     script = result.lesson_script
     introduction = keep("introduction", script.introduction) or NEUTRAL_INTRODUCTION
     conclusion = keep("conclusion", script.conclusion) or NEUTRAL_CONCLUSION
-    sections, citations, titles = [], [], []
+    sections, citations, titles, backgrounds = [], [], [], []
     for index, (section, ids) in enumerate(zip(script.sections, result.section_citations)):
         narration = keep(section.section_title, section.narration)
         if not narration:
@@ -229,6 +229,7 @@ def apply_report(result: GroundedResult, report: ClaimReport) -> tuple[GroundedR
         sections.append(ScriptSection(section_title=title, narration=narration))
         citations.append(list(ids))
         titles.append(title)
+        backgrounds.append(result.section_background[index] if index < len(result.section_background) else "")
     if not sections:
         raise NothingSupported("None of the script could be checked against the paper, so no video was made.")
 
@@ -242,5 +243,6 @@ def apply_report(result: GroundedResult, report: ClaimReport) -> tuple[GroundedR
         ),
         lesson_script=LessonScript(introduction=introduction, sections=sections, conclusion=conclusion),
         section_citations=citations,
+        section_background=backgrounds if result.section_background else [],
     )
     return fixed, failed + dependents
