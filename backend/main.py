@@ -14,6 +14,7 @@ from papers.ingestor import PaperIngestor
 from papers.limits import MULTIPART_OVERHEAD_BYTES, UploadSizeLimitMiddleware
 from papers.repository import PaperRepository
 from papers.router import create_papers_router
+from papers.videos_router import create_paper_videos_router
 from papers.service import DEFAULT_MAX_UPLOAD_BYTES, PaperService
 from animation.narrator import StepNarrator
 from animation.router import AnimationRouter
@@ -25,6 +26,7 @@ from animation.tracers import default_registry
 from rag.database import build_session_factory
 from rag.pg_repository import PostgresRAGRepository
 from rag.storage_service import RAGStorageService
+from retrieval.search import build_paper_searcher
 from schemas.demo import DemoVideoResponse
 from schemas.lesson import (
     LessonPlan,
@@ -42,6 +44,8 @@ from services.llm_service import LLMService
 from services.media_response import create_media_router
 from services.video_library import list_videos
 from services.demo_video_service import DemoVideoService
+from services.grounded_lesson_service import GroundedLessonService
+from services.paper_video_service import PaperVideoService
 from services.knowledge_agent_service import KnowledgeAgentService
 from services.lesson_analyzer_service import LessonAnalyzerService
 from services.lesson_planner_service import LessonPlannerService
@@ -128,14 +132,25 @@ job_service = JobService(
 app.include_router(create_jobs_router(job_service, current_user))
 
 max_paper_upload_bytes = int(float(os.getenv("MAX_PAPER_UPLOAD_MB", DEFAULT_MAX_UPLOAD_BYTES // (1024 * 1024))) * 1024 * 1024)
+rag_repository = PostgresRAGRepository(session_factory)
+rag_storage = RAGStorageService(rag_repository)
 paper_service = PaperService(
     PaperRepository(session_factory),
-    PaperIngestor(RAGStorageService(PostgresRAGRepository(session_factory))),
+    PaperIngestor(rag_storage),
     upload_dir=Path(__file__).parent / "data" / "uploads",
     max_upload_bytes=max_paper_upload_bytes,
     max_concurrent=int(os.getenv("MAX_CONCURRENT_INGESTIONS", "1")),
 )
 app.include_router(create_papers_router(paper_service, current_user))
+paper_video_service = PaperVideoService(
+    papers=paper_service,
+    searcher=build_paper_searcher(rag_storage, rag_repository),
+    grounded=GroundedLessonService(llm_service),
+    demo=demo_video_service,
+    jobs=job_service,
+    videos=video_repository,
+)
+app.include_router(create_paper_videos_router(paper_video_service, current_user))
 app.add_middleware(
     UploadSizeLimitMiddleware,
     max_body_bytes=max_paper_upload_bytes + MULTIPART_OVERHEAD_BYTES,

@@ -18,6 +18,9 @@ PROTECTED = [
     ("POST", "/papers"),
     ("GET", "/papers/abc"),
     ("POST", "/papers/abc/retry"),
+    ("POST", "/papers/abc/videos/check"),
+    ("POST", "/papers/abc/videos"),
+    ("GET", "/papers/abc/videos"),
 ]
 
 
