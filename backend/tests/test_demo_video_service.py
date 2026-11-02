@@ -20,7 +20,7 @@ class Planner:
 
 
 class Writer:
-    def create_lesson_script(self, lesson_request, lesson_plan):
+    def create_lesson_script(self, lesson_request, lesson_plan, knowledge_base=None):
         return LessonScript(introduction="Hi.",
                             sections=[ScriptSection(section_title="How", narration="Halve it.")],
                             conclusion="Bye.")
@@ -213,3 +213,29 @@ def test_render_lesson_can_forbid_the_trace_path(tmp_path):
     service.render_lesson(request, plan, script, allow_trace=False)
 
     assert animator.allow_trace is False
+
+
+def test_the_demo_service_passes_the_knowledge_base_to_the_writer(tmp_path):
+    from schemas.knowledge import KnowledgeBase
+
+    knowledge = KnowledgeBase(topic="Binary Search", audience="beginner", key_concepts=["halving"], facts=[])
+    seen = {}
+
+    class KnowledgeAgent:
+        def create_knowledge_base(self, lesson_request):
+            return knowledge
+
+    class RecordingWriter(Writer):
+        def create_lesson_script(self, lesson_request, lesson_plan, knowledge_base=None):
+            seen["knowledge_base"] = knowledge_base
+            return super().create_lesson_script(lesson_request, lesson_plan)
+
+    service = DemoVideoService(
+        lesson_analyzer_service=Analyzer(), lesson_planner_service=Planner(), script_writer_service=RecordingWriter(),
+        section_animator=Animator(), output_root=tmp_path, knowledge_agent_service=KnowledgeAgent(),
+        concat_clips=lambda paths, out: out, build_audio=lambda paths, durations, out: out, mux=_mux,
+    )
+
+    service.generate_demo_video(UserLessonRequest(request="Explain binary search"))
+
+    assert seen["knowledge_base"] is knowledge

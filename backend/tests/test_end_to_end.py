@@ -32,7 +32,7 @@ class Planner:
 
 
 class Writer:
-    def create_lesson_script(self, lesson_request, lesson_plan):
+    def create_lesson_script(self, lesson_request, lesson_plan, knowledge_base=None):
         return LessonScript(
             introduction="Let's find a number fast.",
             sections=[ScriptSection(section_title="How binary search works",

@@ -43,6 +43,7 @@ class ScriptWriter(Protocol):
         self,
         lesson_request: LessonRequest,
         lesson_plan: LessonPlan,
+        knowledge_base: KnowledgeBase | None = None,
     ) -> LessonScript:
         ...
 
@@ -116,6 +117,7 @@ class DemoVideoService:
             lesson_script = self.script_writer_service.create_lesson_script(
                 lesson_request,
                 lesson_plan,
+                knowledge_base=knowledge_base,
             )
 
         return self.render_lesson(
