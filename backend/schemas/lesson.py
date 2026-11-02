@@ -25,6 +25,13 @@ class LessonRequest(BaseModel):
     teaching_depth: str = Field(
         description="The depth of explanation, such as introductory or intermediate."
     )
+    must_cover: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Terms, concepts or parts the learner named, plus terms the topic cannot be "
+            "understood without. Each one must be explained in the lesson."
+        ),
+    )
 
 
 class LessonPlan(BaseModel):

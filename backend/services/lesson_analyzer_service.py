@@ -38,11 +38,19 @@ class LessonAnalyzerService:
         {request.request}
 
         Determine:
-        - the topic
-        - the intended audience
-        - the learning goal
-        - an approximate lesson duration in minutes
-        - the teaching depth
+        - topic: a short noun phrase naming the subject.
+        - audience: who the lesson is for, as the learner described it; a complete beginner if not stated.
+        - goal: what the learner should be able to do or explain at the end.
+        - duration_minutes: how long the lesson should be.
+        - teaching_depth.
+        - must_cover: the terms, concepts or parts the learner must come away understanding.
+
+        Rules:
+        1. A request for "detail", "in detail", "in depth", "thorough" or "complete" means about 8 minutes and a thorough explanation.
+        2. A quick or brief request means 2 minutes. If nothing is said, use 4 minutes. Never more than 12.
+        3. teaching_depth must be one of: introductory, intermediate, advanced. Asking for detail does not by itself mean advanced; use the audience the learner described.
+        4. must_cover: list every term, concept or part the learner named, plus terms the topic cannot be understood without (at most 8).
+        5. Use the learner's own words for must_cover items.
 
         Return only the structured result matching the provided schema.
         """
