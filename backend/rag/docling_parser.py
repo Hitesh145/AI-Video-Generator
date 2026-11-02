@@ -2,10 +2,51 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 from rag.document_schema import BlockType, DocumentBlock, NormalizedDocument
+
+# A page counts as unread when the PDF's own text layer has at least this many letters and digits
+# but we extracted less than MIN_READ_SHARE of them. Clean papers keep 70% or more of every page
+# (figure-label pages about 40%); a page whose recognition failed keeps close to nothing.
+MIN_LAYER_CHARS = 300
+MIN_READ_SHARE = 0.25
+
+
+def find_unread_pages(layer_chars: Mapping[int, int], extracted_chars: Mapping[int, int]) -> list[int]:
+    """Pages whose text the PDF contains but the conversion lost."""
+    return [
+        page
+        for page, layer in sorted(layer_chars.items())
+        if layer >= MIN_LAYER_CHARS and extracted_chars.get(page, 0) < MIN_READ_SHARE * layer
+    ]
+
+
+def read_text_layer(pdf_path: Path) -> dict[int, int] | None:
+    """Letters and digits in each page's embedded text layer (1-based pages); None if it cannot be read.
+
+    Scanned PDFs have no text layer, so every page is small and nothing is ever flagged for them.
+    """
+    try:
+        import pypdfium2 as pdfium
+
+        document = pdfium.PdfDocument(str(pdf_path))
+        try:
+            return {
+                index + 1: len(re.findall(r"[^\W_]", document[index].get_textpage().get_text_range()))
+                for index in range(len(document))
+            }
+        finally:
+            document.close()
+    except Exception:
+        return None
+
+
+class _IncompleteConversion(RuntimeError):
+    """The PDF was only partly read; carries a message that is safe to show the user."""
 
 
 class DoclingPDFParser:
@@ -19,8 +60,13 @@ class DoclingPDFParser:
     relatively large dependency set has been installed.
     """
 
-    def __init__(self, image_output_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        image_output_dir: Path | None = None,
+        text_layer_reader: Callable[[Path], dict[int, int] | None] = read_text_layer,
+    ) -> None:
         self._image_output_dir = Path(image_output_dir) if image_output_dir else None
+        self._read_text_layer = text_layer_reader
 
     def parse(self, pdf_path: Path) -> NormalizedDocument:
         try:
@@ -43,6 +89,7 @@ class DoclingPDFParser:
                 }
             )
             result = converter.convert(str(pdf_path))
+            self._refuse_partial_conversion(result)
             document = result.document
             image_output_dir = self._image_output_dir or (
                 pdf_path.parent / f"{pdf_path.stem}_assets"
@@ -63,6 +110,7 @@ class DoclingPDFParser:
                 and block.text
             ]
             warnings.extend(self._conversion_warnings(result))
+            self._refuse_lost_pages(pdf_path, blocks)
 
             return NormalizedDocument(
                 source_filename=pdf_path.name,
@@ -424,6 +472,37 @@ class DoclingPDFParser:
         except TypeError:
             return None
         return count if count > 0 else None
+
+    @staticmethod
+    def _refuse_partial_conversion(result: Any) -> None:
+        errors = getattr(result, "errors", None) or []
+        status = str(getattr(getattr(result, "status", None), "value", getattr(result, "status", "")))
+        if errors or status == "partial_success":
+            reasons = "; ".join(
+                str(getattr(error, "error_message", None) or error) for error in errors
+            ) or "the parser reported a partial result"
+            raise _IncompleteConversion(
+                f"This PDF could not be read completely ({reasons}). "
+                "Nothing was stored, because a partly read paper would give wrong answers. Please try again."
+            )
+
+    def _refuse_lost_pages(self, pdf_path: Path, blocks: list[DocumentBlock]) -> None:
+        layer = self._read_text_layer(pdf_path)
+        if not layer:
+            return
+        extracted: dict[int, int] = {}
+        for block in blocks:
+            if block.page_number is not None:
+                extracted[block.page_number] = extracted.get(block.page_number, 0) + len(
+                    re.findall(r"[^\W_]", block.text or "")
+                )
+        lost = find_unread_pages(layer, extracted)
+        if lost:
+            pages = ", ".join(f"page {page}" for page in lost)
+            raise _IncompleteConversion(
+                f"This PDF could not be read completely: the text of {pages} was lost while reading. "
+                "Nothing was stored, because a partly read paper would give wrong answers. Please try again."
+            )
 
     @staticmethod
     def _conversion_warnings(result: Any) -> list[str]:
