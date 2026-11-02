@@ -23,7 +23,6 @@ from services.run_context import llm_step, report_stage
 Mode = Literal["paper", "general"]
 CoverageCheck = Coverage
 
-NOT_CHECKED_WARNING = "This video has not yet been checked sentence by sentence against the paper."   # videos made before the checker
 CHECKED_NOTE = "Each sentence was checked against the passages it cites by a second model pass; this is not a guarantee."
 BRIEF_WARNING = "The paper may cover this topic only briefly."
 
@@ -61,7 +60,7 @@ class Checker(Protocol):
 
 
 class Renderer(Protocol):
-    def render_lesson(self, lesson_request, lesson_plan, lesson_script, knowledge_base=None, qc_warnings=None, extra_artifacts=None) -> DemoVideoResponse: ...
+    def render_lesson(self, lesson_request, lesson_plan, lesson_script, knowledge_base=None, qc_warnings=None, extra_artifacts=None, allow_trace=True) -> DemoVideoResponse: ...
 
     def generate_demo_video(self, request: UserLessonRequest) -> DemoVideoResponse: ...
 
@@ -152,16 +151,19 @@ class PaperVideoService:
         return paper
 
     def _checked(self, topic: str, evidence: list[Evidence], coverage: Coverage, result: GroundedResult):
-        """Check the script; rewrite once if sentences are unsupported; remove what is still unsupported.
+        """Check the script; rewrite once if sentences are unsupported; keep the better script; remove what still fails.
 
-        A checker error propagates, so a script that could not be checked is never rendered.
+        A checker error propagates, so a script that could not be checked is never rendered. If the rewrite cannot be
+        written (including when the writer says the passages do not address the topic) the first script is kept and
+        its unsupported sentences are removed: it already passed coverage, and what remains is checked.
         """
         report_stage("check")
         with llm_step("claim check"):
             report = self.checker.check(result)
-        regenerated = False
+        regenerated = used_rewrite = False
         if not report.ok:
             report_stage("check", "Rewriting the sentences the paper does not support")
+            regenerated = True
             try:
                 with llm_step("grounded lesson (rewrite)"):
                     rewritten = self.grounded.create(
@@ -169,14 +171,15 @@ class PaperVideoService:
                         feedback=[check.sentence for check in report.failed],
                     )
             except UngroundedLesson:
-                rewritten = None               # keep the first script; its unsupported sentences are removed below
+                rewritten = None
             if rewritten is not None:
                 report_stage("check", "Checking the rewritten script")
                 with llm_step("claim check (second pass)"):
                     second = self.checker.check(rewritten)
-                result, report, regenerated = rewritten, second, True
+                if len(second.failed) <= len(report.failed):          # keep whichever script loses less
+                    result, report, used_rewrite = rewritten, second, True
         fixed, removed = apply_report(result, report)
-        return fixed, report, removed, regenerated
+        return fixed, report, removed, regenerated, used_rewrite
 
     def _search(self, user_id: str, paper: PaperRecord, topic: str) -> list[Evidence]:
         return self.searcher.search(user_id, paper.document_id, topic, k=self.evidence_count, mode="vector")
@@ -197,7 +200,7 @@ class PaperVideoService:
             result = self.grounded.create(topic, evidence, brief=coverage.level == "weak")
         report_stage("script")
 
-        result, report, removed, regenerated = self._checked(topic, evidence, coverage, result)
+        result, report, removed, regenerated, used_rewrite = self._checked(topic, evidence, coverage, result)
 
         warnings = [CHECKED_NOTE]
         if removed:
@@ -226,6 +229,7 @@ class PaperVideoService:
         return self.demo.render_lesson(
             result.lesson_request, result.lesson_plan, result.lesson_script,
             qc_warnings=warnings,
+            allow_trace=False,          # the trace path would re-narrate sections with text nobody checked
             extra_artifacts={
                 "evidence.json": json.dumps(evidence_file, indent=2, ensure_ascii=False),
                 "citations.json": json.dumps(citations, indent=2, ensure_ascii=False),
@@ -233,6 +237,7 @@ class PaperVideoService:
                 "claim_check.json": json.dumps(
                     {
                         "regenerated": regenerated,
+                        "used_rewrite": used_rewrite,
                         "checks": [_check_as_dict(check) for check in report.checks],
                         "removed": [_check_as_dict(check) for check in removed],
                     },

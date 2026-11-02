@@ -42,3 +42,13 @@ The check adds about 3 to 5 model calls and roughly 20 seconds per script (write
 1. Make citations more precise (ask the writer for the passage per sentence) to cut false alarms.
 2. Test subtle paraphrase errors and try a different model for the checker.
 3. A check for missing key results.
+
+## 6. After the review fixes (second run, same six lessons)
+
+The review (see the commit "Fix review findings in the claim checker") tightened the checker: titles are now checked too, framing is accepted only in the introduction and conclusion, the checker's numbering must match the sentences exactly, sentences are split on quotes, brackets and digits, and paper videos no longer use the trace animation path (which re-narrates a section with text nobody checked).
+
+- **Planted errors: 18 of 18 caught again** (6 of 6 in each kind).
+- **False alarms: 5 of 78 untouched sentences (6%)**, against 14% in the first run. The sentences are now split more finely, so fewer rejections are caused by a long sentence that mixed a supported part with an unsupported one. One rejection was right: "Formally, a building block is defined as F + x." came from a section whose equation had no extracted text.
+- **No unusable answers:** the real model's numbering matched the sentences every time, so the new refusal of a mismatching answer did not trigger.
+- **Latency varies:** writing plus checking took 31 to 50 seconds per script, and one script took 224 seconds (a slow model response).
+- Still not measured: subtle paraphrase errors, a different model as the checker, and missing key results.

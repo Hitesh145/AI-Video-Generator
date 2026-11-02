@@ -52,6 +52,7 @@ class SectionAnimatorLike(Protocol):
         self,
         sections: list[RenderSection],
         output_dir: Path,
+        allow_trace: bool = True,
     ) -> tuple[list[SectionClip], list[str]]:
         ...
 
@@ -129,6 +130,7 @@ class DemoVideoService:
         knowledge_base: KnowledgeBase | None = None,
         qc_warnings: list[str] | None = None,
         extra_artifacts: Mapping[str, str] | None = None,
+        allow_trace: bool = True,
     ) -> DemoVideoResponse:
         """Animate and assemble a lesson that is already written (the stages from "animate" onward).
 
@@ -141,7 +143,10 @@ class DemoVideoService:
 
         output_dir = self._create_output_dir(lesson_request.topic)
         bind_run_directory(output_dir)
-        clips, animation_warnings = self.section_animator.animate(sections, output_dir)
+        if allow_trace:
+            clips, animation_warnings = self.section_animator.animate(sections, output_dir)
+        else:
+            clips, animation_warnings = self.section_animator.animate(sections, output_dir, allow_trace=False)
         qc_warnings.extend(animation_warnings)
 
         report_stage("assemble")

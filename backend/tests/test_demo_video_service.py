@@ -30,7 +30,8 @@ class Animator:
     def __init__(self):
         self.sections = None
 
-    def animate(self, sections, output_dir):
+    def animate(self, sections, output_dir, allow_trace=True):
+        self.allow_trace = allow_trace
         self.sections = sections
         clips = [
             SectionClip(section_index=s.index, title=s.title, video_path=f"v{s.index}.mp4",
@@ -196,3 +197,19 @@ def test_a_very_long_topic_still_gets_a_valid_run_folder_name(tmp_path):
     response = service.render_lesson(request, plan, script)
 
     assert len(Path(response.output_dir).name) <= 80
+
+
+def test_render_lesson_can_forbid_the_trace_path(tmp_path):
+    animator = Animator()
+    service = DemoVideoService(
+        lesson_analyzer_service=ExplodingStage(), lesson_planner_service=ExplodingStage(),
+        script_writer_service=ExplodingStage(), section_animator=animator, output_root=tmp_path,
+        concat_clips=lambda paths, out: out, build_audio=lambda paths, durations, out: out, mux=_mux,
+    )
+    request = LessonRequest(topic="T", audience="a", goal="g", duration_minutes=2, teaching_depth="i")
+    plan = LessonPlan(title="T", learning_objectives=["x"], sections=["How"])
+    script = LessonScript(introduction="Hi.", sections=[ScriptSection(section_title="How", narration="n")], conclusion="Bye.")
+
+    service.render_lesson(request, plan, script, allow_trace=False)
+
+    assert animator.allow_trace is False

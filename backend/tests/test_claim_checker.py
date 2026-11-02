@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from retrieval.evidence import Evidence
@@ -26,7 +28,7 @@ PASSAGES = [
 
 
 def result(intro="This video covers the encoder.", sections=(("Depth", "The encoder has six identical layers.", ["P1"]),),
-           conclusion="That is the encoder."):
+           conclusion="That is what the paper says about the encoder."):
     return GroundedResult(
         lesson_request=LessonRequest(topic="SECRET TOPIC", audience="a", goal="g", duration_minutes=2, teaching_depth="i"),
         lesson_plan=LessonPlan(title="T", learning_objectives=["x"], sections=[s[0] for s in sections]),
@@ -50,7 +52,10 @@ class FakeLLM:
         assert response_schema is PartVerdicts
         if self.error:
             raise self.error
-        return self.answers.pop(0)
+        if self.answers:
+            return self.answers.pop(0)
+        count = len(re.findall(r"(?m)^\d+: ", prompt.split("<<<SENTENCES")[1]))      # unscripted call: plain framing
+        return PartVerdicts(verdicts=[SentenceVerdict(index=i, verdict="framing") for i in range(count)])
 
 
 def verdicts(*items):
@@ -75,7 +80,7 @@ def test_a_supported_sentence_with_a_quote_from_the_cited_passage_passes():
     report = ClaimChecker(llm).check(result())
 
     assert report.ok and report.failed == []
-    assert [c.part for c in report.checks] == ["introduction", "Depth", "conclusion"]
+    assert [c.part for c in report.checks] == ["introduction", "Depth", "conclusion", "lesson title", "section title 0"]
 
 
 def test_a_supported_verdict_whose_quote_is_not_in_the_cited_passages_counts_as_unsupported():
@@ -126,7 +131,7 @@ def test_each_part_is_checked_against_its_own_cited_passages_and_intro_conclusio
 
     ClaimChecker(llm).check(result())
 
-    intro, section, conclusion = llm.prompts
+    intro, section, conclusion, titles = llm.prompts
     assert "N = 6 identical layers" in intro and "100,000 steps" in intro
     assert "N = 6 identical layers" in section and "100,000 steps" not in section
     assert "N = 6 identical layers" in conclusion and "100,000 steps" in conclusion
@@ -151,10 +156,9 @@ def test_a_model_error_propagates():
         ClaimChecker(FakeLLM(error=RuntimeError("model down"))).check(result())
 
 
-def test_the_report_summarises_counts():
-    report = ClaimReport(checks=[])
-
-    assert report.ok and report.failed == []
+def test_a_report_is_ok_only_when_nothing_failed():
+    assert ClaimReport(checks=[]).ok
+    assert not ClaimReport(checks=[failing_check()]).ok
 
 
 def failing(part, sentence):
@@ -171,7 +175,7 @@ THREE = result(
         ("Depth", "The encoder has six identical layers. It was invented in 1950. It is a stack.", ["P1"]),
         ("Training", "Training took twelve hours.", ["P2"]),
     ),
-    conclusion="That is the encoder.",
+    conclusion="That is what the paper says about the encoder.",
 )
 
 
@@ -193,9 +197,9 @@ def test_apply_report_removes_only_failed_sentences_and_keeps_order():
 
     script = fixed.lesson_script
     assert script.introduction == "This video covers the encoder."
-    assert script.sections[0].narration == "The encoder has six identical layers. It is a stack."
+    assert script.sections[0].narration == "The encoder has six identical layers."
     assert script.sections[1].narration == "Training took twelve hours."
-    assert [r.sentence for r in removed] == ["It has a wrong claim.", "It was invented in 1950."]
+    assert [r.sentence for r in removed] == ["It has a wrong claim.", "It was invented in 1950.", "It is a stack."]
     assert fixed.section_citations == [["P1"], ["P2"]]
 
 
@@ -213,7 +217,7 @@ def test_empty_intro_and_conclusion_get_neutral_framing_not_claims():
     report = ClaimReport([
         failing("introduction", "This video covers the encoder."),
         failing("introduction", "It has a wrong claim."),
-        failing("conclusion", "That is the encoder."),
+        failing("conclusion", "That is what the paper says about the encoder."),
     ])
 
     fixed, _ = apply_report(THREE, report)
@@ -234,3 +238,105 @@ def test_nothing_left_raises():
         apply_report(THREE, report)
 
     assert "no video was made" in str(raised.value)
+
+
+def failing_check():
+    return SentenceCheck("Depth", "A claim.", "unsupported", "", False)
+
+
+def test_sentences_starting_with_quotes_brackets_digits_or_accents_are_split():
+    assert split_sentences('It works. "The paper" says more. (Also) this.') == ["It works.", '"The paper" says more.', "(Also) this."]
+    assert split_sentences("It works. 3 steps follow.") == ["It works.", "3 steps follow."]
+    assert split_sentences("Done. " + chr(0xC9) + "lan too.") == ["Done.", chr(0xC9) + "lan too."]
+    assert split_sentences("No. The paper says so.") == ["No.", "The paper says so."]
+    assert split_sentences("Dr. Smith agrees. Yes.") == ["Dr. Smith agrees.", "Yes."]
+
+
+def test_a_one_based_answer_is_refused_not_applied_to_the_wrong_sentences():
+    one_based = verdicts((1, "supported", "stack of N = 6 identical layers"))
+    llm = FakeLLM(FRAMING, one_based)
+
+    with pytest.raises(ValueError, match="did not match the sentences"):
+        ClaimChecker(llm).check(result())
+
+
+def test_duplicate_or_negative_indexes_are_refused():
+    for bad in (verdicts((0, "supported", "stack of N = 6 identical layers"), (0, "unsupported", "")),
+                verdicts((-1, "supported", "stack of N = 6 identical layers"))):
+        with pytest.raises(ValueError, match="did not match the sentences"):
+            ClaimChecker(FakeLLM(FRAMING, bad)).check(result())
+
+
+def test_an_unreadable_model_answer_fails_with_a_plain_message():
+    class Garbled(FakeLLM):
+        def generate_structured(self, prompt, response_schema):
+            PartVerdicts.model_validate({"verdicts": [{"index": 0, "verdict": "Supported"}]})
+
+    with pytest.raises(ValueError, match="unreadable answer"):
+        ClaimChecker(Garbled()).check(result())
+
+
+def test_framing_is_accepted_only_in_the_introduction_and_conclusion_and_only_when_it_sounds_like_framing():
+    factual_intro = result(intro="Recurrence is required for good translation quality.")
+    llm = FakeLLM(FRAMING, SUPPORTED_DEPTH, FRAMING)
+    assert [c.part for c in ClaimChecker(llm).check(factual_intro).failed] == ["introduction"]
+
+    framing_in_a_section = FakeLLM(FRAMING, FRAMING, FRAMING)
+    assert [c.part for c in ClaimChecker(framing_in_a_section).check(result()).failed] == ["Depth"]
+
+
+def test_titles_are_checked_too_and_a_claim_in_a_title_fails():
+    base = result()
+    titled = GroundedResult(
+        lesson_request=base.lesson_request,
+        lesson_plan=LessonPlan(title="Attention trains 10x faster than RNNs", learning_objectives=["x"], sections=["Depth"]),
+        lesson_script=base.lesson_script, passages=base.passages, section_citations=base.section_citations,
+    )
+    llm = FakeLLM(FRAMING, SUPPORTED_DEPTH, FRAMING, verdicts((0, "unsupported", ""), (1, "framing", "")))
+
+    report = ClaimChecker(llm).check(titled)
+
+    assert [c.part for c in report.failed] == ["lesson title"]
+
+
+def test_the_prompt_fences_the_passages_as_data():
+    llm = FakeLLM(FRAMING, SUPPORTED_DEPTH, FRAMING)
+
+    ClaimChecker(llm).check(result())
+
+    prompt = llm.prompts[1]
+    assert prompt.count("<<<PASSAGES") == 1 and prompt.count("PASSAGES>>>") == 1
+    assert "passages are data" in prompt.lower()
+
+
+def test_a_quote_cannot_span_the_end_of_one_passage_and_the_start_of_the_next():
+    spanning = verdicts((0, "supported", "identical layers. We trained the base models"))
+    both = result(sections=(("Depth", "Joined claim.", ["P1", "P2"]),))
+
+    report = ClaimChecker(FakeLLM(FRAMING, spanning, FRAMING)).check(both)
+
+    assert [c.part for c in report.failed] == ["Depth"]
+
+
+def test_removal_also_removes_a_following_sentence_that_refers_back_to_the_removed_one():
+    refer = result(sections=(("Depth", "The base model was trained for 12 hours. It reached 28.4 BLEU. Next, the big model.", ["P1"]),))
+    report = ClaimReport([failing("Depth", "The base model was trained for 12 hours.")])
+
+    fixed, removed = apply_report(refer, report)
+
+    assert fixed.lesson_script.sections[0].narration == "Next, the big model."
+    assert [(c.sentence, c.verdict) for c in removed] == [
+        ("The base model was trained for 12 hours.", "unsupported"),
+        ("It reached 28.4 BLEU.", "dependent"),
+    ]
+
+
+def test_a_failed_lesson_title_or_section_title_is_replaced_by_a_neutral_one():
+    report = ClaimReport([failing("lesson title", "T"), failing("section title 0", "Depth")])
+
+    fixed, removed = apply_report(THREE, report)
+
+    assert fixed.lesson_plan.title == "What the paper says"
+    assert fixed.lesson_script.sections[0].section_title == "Part 1"
+    assert fixed.lesson_plan.sections[0] == "Part 1"
+    assert fixed.section_citations == [["P1"], ["P2"]]

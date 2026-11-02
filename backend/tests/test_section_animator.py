@@ -324,3 +324,13 @@ def test_trace_section_reports_its_activities(tmp_path):
         animator.animate([TRACE_SECTION], tmp_path)
 
     assert [s[4] for s in progress.sections] == ["starting", "narrating steps", "animating algorithm trace"]
+
+
+def test_without_trace_the_router_is_skipped_and_every_section_keeps_its_own_sentences(tmp_path):
+    animator, template, codegen, _ = make([TRACE_ROUTE])
+    animator.router = None                       # calling it would raise: it must not be consulted
+
+    clips, warnings = animator.animate([TRACE_SECTION], tmp_path, allow_trace=False)
+
+    assert clips[0].path_used == "codegen" and template.calls == []
+    assert clips[0].narration_segments == ["It is fast.", "It is simple."]    # the storyboard's own sentences

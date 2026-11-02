@@ -110,7 +110,8 @@ class FakeDemo:
         self.rendered = []
         self.generated = []
 
-    def render_lesson(self, lesson_request, lesson_plan, lesson_script, knowledge_base=None, qc_warnings=None, extra_artifacts=None):
+    def render_lesson(self, lesson_request, lesson_plan, lesson_script, knowledge_base=None, qc_warnings=None, extra_artifacts=None, allow_trace=True):
+        self.allow_trace = allow_trace
         run = self.root / f"run-{uuid4().hex[:6]}"
         run.mkdir()
         self.rendered.append((qc_warnings, dict(extra_artifacts or {})))
@@ -207,7 +208,7 @@ def test_an_absent_topic_in_paper_mode_raises_and_starts_no_job(world):
     assert world.grounded.calls == [] and world.videos.list_for_paper(world.me, "paper-1") == []
 
 
-def test_a_covered_topic_renders_with_citations_evidence_and_the_not_checked_warning(world):
+def test_a_covered_topic_renders_with_citations_evidence_and_the_checked_note(world):
     service = world.build(similarity=0.9)
 
     job = finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
@@ -357,3 +358,38 @@ def test_nothing_supported_fails_the_job_with_a_plain_message(world):
 
     assert job.status == "failed" and "no video was made" in job.error.message
     assert world.demo.rendered == []
+
+
+def test_paper_videos_never_use_the_trace_path_whose_narration_is_rewritten_by_another_model(world):
+    service = world.build()
+
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    assert world.demo.allow_trace is False
+
+
+def test_the_better_of_the_two_scripts_is_rendered(world):
+    # The rewrite is checked too, and is worse than the first script: the first one is kept.
+    checker = FakeChecker(failing_report("Second claim."), failing_report("First claim.", "Second claim."))
+    service = world.build(checker=checker)
+
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    saved = json.loads(world.demo.rendered[0][1]["claim_check.json"])
+    assert saved["regenerated"] is True and saved["used_rewrite"] is False
+    assert [r["sentence"] for r in saved["removed"]] == ["Second claim."]
+
+
+def test_a_failed_rewrite_is_recorded_as_a_regeneration_attempt(world):
+    class RewriteFails(FakeGrounded):
+        def create(self, topic, evidence, brief=False, feedback=()):
+            if feedback:
+                raise UngroundedLesson("could not be tied")
+            return super().create(topic, evidence, brief, feedback)
+
+    service = world.build(checker=FakeChecker(failing_report("Second claim.")), grounded=RewriteFails())
+
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    saved = json.loads(world.demo.rendered[0][1]["claim_check.json"])
+    assert saved["regenerated"] is True and saved["used_rewrite"] is False

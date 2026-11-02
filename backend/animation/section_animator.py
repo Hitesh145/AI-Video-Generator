@@ -92,10 +92,22 @@ class SectionAnimator:
         self.fit_clip = fit_clip
         self.build_audio = build_audio
 
-    def animate(self, sections: list[RenderSection], output_dir: Path) -> tuple[list[SectionClip], list[str]]:
-        report_stage("route")
-        with llm_step("router"):
-            routing = self.router.route(sections)
+    def animate(
+        self, sections: list[RenderSection], output_dir: Path, allow_trace: bool = True
+    ) -> tuple[list[SectionClip], list[str]]:
+        """Animate every section.
+
+        With ``allow_trace=False`` the router is not consulted and every section uses the generated-animation path,
+        which speaks the section's own sentences. The trace path would replace them with narration written by another
+        model, which must not happen to a script that was checked against a paper.
+        """
+        if allow_trace:
+            report_stage("route")
+            with llm_step("router"):
+                routing = self.router.route(sections)
+        else:
+            report_stage("route", "Using the checked script as written")
+            routing = RoutingResult([ResolvedRoute(section.index, "codegen") for section in sections], [])
         warnings = list(routing.warnings)
         clips: list[SectionClip] = []
         total = len(sections)
