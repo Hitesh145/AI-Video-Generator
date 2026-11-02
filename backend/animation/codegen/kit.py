@@ -6,8 +6,9 @@ generated scene files, which cannot import the backend package.
 
 import json
 import os
+import re
 
-from manim import DOWN, LEFT, UP, RIGHT, Mobject, Text, VGroup, config
+from manim import DOWN, LEFT, UP, RIGHT, MarkupText, Mobject, Text, ThreeDScene, VGroup, config
 
 
 BACKGROUND = "#0F172A"
@@ -67,6 +68,72 @@ def bullet_list(items: list[str], font_size: int = 28) -> VGroup:
     return fit_in_frame(rows)
 
 
+OVERLAP_SHARE = 0.10          # two texts overlap when their boxes share more than this part of the smaller box
+EDGE_TOLERANCE = 0.05         # frame units
+MIN_VISIBLE_OPACITY = 0.05    # fully faded text is not on screen
+
+
+def _text_leaves(mobjects):
+    """Every Text/MarkupText below the given mobjects; a text is one leaf (its glyphs are not walked)."""
+    for item in mobjects:
+        if isinstance(item, (Text, MarkupText)):
+            yield item
+        else:
+            yield from _text_leaves(item.submobjects)
+
+
+def _label(item) -> str:
+    # Manim's own `.text` drops the spaces; `original_text` keeps what the scene wrote. Markup tags are not shown.
+    raw = getattr(item, "original_text", None) or getattr(item, "text", "") or ""
+    text = " ".join(re.sub(r"<[^>]+>", "", raw).split())
+    return text if len(text) <= 30 else text[:29] + "..."
+
+
+def layout_issues(scene) -> list[str]:
+    """Plain sentences for text that overlaps other text, leaves the screen or covers the subtitle area.
+
+    In a ThreeDScene only the text fixed in the frame is judged: positions of world objects are projected by the
+    camera, so their boxes cannot be compared.
+    """
+    if isinstance(scene, ThreeDScene):
+        fixed = {id(item) for item in (getattr(scene.camera, "fixed_in_frame_mobjects", None) or ())}
+        roots = [item for item in scene.mobjects if id(item) in fixed]
+    else:
+        roots = list(scene.mobjects)
+
+    leaves = [leaf for leaf in _text_leaves(roots) if leaf.get_fill_opacity() >= MIN_VISIBLE_OPACITY]
+    boxes = [(leaf.get_left()[0], leaf.get_right()[0], leaf.get_bottom()[1], leaf.get_top()[1]) for leaf in leaves]
+    half_width, half_height = config.frame_width / 2, config.frame_height / 2
+    safe_bottom = caption_safe_area()[0]
+
+    issues: list[str] = []
+    for leaf, (left, right, bottom, top) in zip(leaves, boxes):
+        if (left < -half_width - EDGE_TOLERANCE or right > half_width + EDGE_TOLERANCE
+                or top > half_height + EDGE_TOLERANCE or bottom < -half_height - EDGE_TOLERANCE):
+            issues.append(f"'{_label(leaf)}' leaves the screen")
+        elif bottom < safe_bottom - EDGE_TOLERANCE:
+            issues.append(f"'{_label(leaf)}' covers the subtitle area")
+
+    for first in range(len(leaves)):
+        for second in range(first + 1, len(leaves)):
+            l1, r1, b1, t1 = boxes[first]
+            l2, r2, b2, t2 = boxes[second]
+            width, height = min(r1, r2) - max(l1, l2), min(t1, t2) - max(b1, b2)
+            if width <= 0 or height <= 0:
+                continue
+            smaller = min((r1 - l1) * (t1 - b1), (r2 - l2) * (t2 - b2))
+            if smaller > 0 and width * height / smaller > OVERLAP_SHARE:
+                issues.append(f"'{_label(leaves[first])}' and '{_label(leaves[second])}' overlap")
+    return issues
+
+
+def _safe_layout_issues(scene) -> list[str]:
+    try:
+        return layout_issues(scene)
+    except Exception:       # a layout check must never break a render
+        return []
+
+
 BEAT_DURATIONS_ENV = "BEAT_DURATIONS"
 BEAT_REPORT_ENV = "BEAT_REPORT"
 _MIN_WAIT = 0.04
@@ -118,6 +185,7 @@ class BeatClock:
             "expected_end": round(expected - self.start, 3),
             "actual_end": round(actual - self.start, 3),
             "overrun": round(max(0.0, actual - expected), 3),
+            "layout": _safe_layout_issues(self.scene),
         })
         self._write_report()
 

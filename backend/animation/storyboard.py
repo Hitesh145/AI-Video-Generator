@@ -178,5 +178,7 @@ Rules:
 3. Keep objects and layout consistent from one beat to the next (the same box stays the same box).
 4. Text on screen is short labels only, never the narration itself.
 5. Describe shapes, arrows, diagrams and motion in one or two plain sentences per beat.
+6. Plan at most 6 labelled items per beat and say where each one sits (left, right, top, bottom, centre).
+7. A visual may be described as 3D when the idea is spatial (layers, matrices, vectors, stacks).
 {rejected}
 """

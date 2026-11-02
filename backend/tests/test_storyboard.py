@@ -241,3 +241,21 @@ def test_split_sentences_keeps_double_closing_quotes_attached():
     text = "He said “she said ‘stop.’” Then left."
 
     assert split_sentences(text) == ["He said “she said ‘stop.’”", "Then left."]
+
+
+def storyboard_prompt():
+    llm = FakeLLM([{"beats": [{"sentence_count": 2, "visual": "two boxes"}]}])
+    Storyboarder(llm).plan(RenderSection(index=1, title="Why", narration="It is fast. It is simple."))
+    return " ".join(llm.prompts[0].split())
+
+
+def test_the_storyboard_prompt_limits_items_and_asks_where_each_one_sits():
+    prompt = storyboard_prompt()
+
+    assert "Plan at most 6 labelled items per beat and say where each one sits (left, right, top, bottom, centre)." in prompt
+
+
+def test_the_storyboard_prompt_allows_3d_visuals_for_spatial_ideas():
+    prompt = storyboard_prompt()
+
+    assert "A visual may be described as 3D when the idea is spatial (layers, matrices, vectors, stacks)." in prompt

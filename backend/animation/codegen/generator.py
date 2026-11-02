@@ -57,6 +57,45 @@ class TimingCheck:
     worst_overrun: float
 
 
+MAX_LAYOUT_LINES = 6
+
+
+@dataclass(frozen=True)
+class LayoutCheck:
+    error: str | None
+    issue_count: int
+
+
+def check_layout(rows: list[dict]) -> LayoutCheck:
+    """Turn the layout issues the beat clock recorded into one precise message for the retry prompt."""
+    beats_by_issue: dict[str, list[int]] = {}
+    for row in rows:
+        for issue in row.get("layout", []) or []:
+            beats_by_issue.setdefault(issue, []).append(int(row.get("beat", 0)))
+    if not beats_by_issue:
+        return LayoutCheck(None, 0)
+    lines = []
+    for issue, beats in list(beats_by_issue.items())[:MAX_LAYOUT_LINES]:
+        where = f"Beat {beats[0]}" if len(beats) == 1 else f"Beats {beats[0]}-{beats[-1]}"
+        lines.append(f"- {where}: {issue}")
+    more = len(beats_by_issue) - MAX_LAYOUT_LINES
+    if more > 0:
+        lines.append(f"- and {more} more")
+    error = (
+        "The scene has layout problems:\n" + "\n".join(lines)
+        + "\nFix them: move one object, scale it down, shorten the text, or remove the old object first."
+    )
+    return LayoutCheck(error, len(beats_by_issue))
+
+
+def read_rows(report_path: Path) -> list[dict]:
+    try:
+        rows = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return rows if isinstance(rows, list) else []
+
+
 def default_scene_renderer(
     scene_file: Path,
     scene_name: str,
@@ -159,7 +198,7 @@ class CodegenRenderer:
         errors: list[str] = []
         previous_code: str | None = None
         previous_error: str | None = None
-        best_late: tuple[float, Path, str] | None = None
+        best_soft: tuple[tuple[int, float], Path, str, int] | None = None
 
         for attempt in range(1, self.max_attempts + 1):
             stem = artifacts_dir / f"section_{section.index}_attempt_{attempt}"
@@ -196,22 +235,28 @@ class CodegenRenderer:
                     error = f"Render failed:\n{exc}"
                 else:
                     check = check_beat_report(report_path, len(beats), durations)
-                    if check.error is None:
+                    layout = LayoutCheck(None, 0) if check.hard else check_layout(read_rows(report_path))
+                    if check.error is None and layout.error is None:
                         shutil.copyfile(attempt_output, output_path)
                         return CodegenResult(output_path, [])
-                    error = check.error
-                    if not check.hard and (best_late is None or check.worst_overrun < best_late[0]):
-                        best_late = (check.worst_overrun, attempt_output, check.error)
+                    error = "\n".join(message for message in (check.error, layout.error) if message)
+                    if not check.hard:
+                        score = (layout.issue_count, check.worst_overrun)
+                        if best_soft is None or score < best_soft[0]:
+                            best_soft = (score, attempt_output, error, layout.issue_count)
 
             stem.with_suffix(".log").write_text(error, encoding="utf-8")
             errors.append(f"attempt {attempt}: {summary or error.splitlines()[0]}")
             previous_code = code
             previous_error = error
 
-        if best_late is not None:
-            _, late_path, message = best_late
-            shutil.copyfile(late_path, output_path)
-            warning = f"Section '{section.title}': animation ran late against the narration ({message})"
+        if best_soft is not None:
+            _, soft_path, message, layout_issues = best_soft
+            shutil.copyfile(soft_path, output_path)
+            if layout_issues:
+                warning = f"Section '{section.title}': some text may overlap or sit outside the safe area ({' '.join(message.split())})"
+            else:
+                warning = f"Section '{section.title}': animation ran late against the narration ({message})"
             return CodegenResult(output_path, [warning])
         raise CodegenFailed(errors)
 
@@ -286,6 +331,11 @@ Rules:
     If the narration is abstract, draw an abstract diagram.
 12. Keep objects consistent across beats: reuse and transform what is already on screen
     instead of redrawing it.
+13. Place content on a grid: at most 6 text items on screen at once; leave 0.4 units between any two objects.
+14. Never place text on top of other text; use next_to(..., buff=0.3) or arrange(..., buff=0.3).
+15. Fade out or remove an object before drawing something else in its place.
+16. Text longer than 28 characters must be split over lines or scaled with scale_to_fit_width.
+17. Call fit_in_frame on every group you build.
 
 Examples of good scenes (they use 3 beats of 2.5 s each):
 
