@@ -15,14 +15,16 @@ from retrieval.coverage import Coverage, assess_coverage
 from retrieval.evidence import Evidence
 from schemas.demo import DemoVideoResponse
 from schemas.lesson import UserLessonRequest
-from services.grounded_lesson_service import GroundedResult
+from services.claim_checker import ClaimReport, apply_report
+from services.grounded_lesson_service import GroundedResult, UngroundedLesson
 from services.job_service import JobService
 from services.run_context import llm_step, report_stage
 
 Mode = Literal["paper", "general"]
 CoverageCheck = Coverage
 
-NOT_CHECKED_WARNING = "This video has not yet been checked sentence by sentence against the paper."
+NOT_CHECKED_WARNING = "This video has not yet been checked sentence by sentence against the paper."   # videos made before the checker
+CHECKED_NOTE = "Each sentence was checked against the passages it cites by a second model pass; this is not a guarantee."
 BRIEF_WARNING = "The paper may cover this topic only briefly."
 
 
@@ -49,7 +51,13 @@ class Searcher(Protocol):
 
 
 class Grounded(Protocol):
-    def create(self, topic: str, evidence: Sequence[Evidence], brief: bool = False) -> GroundedResult: ...
+    def create(
+        self, topic: str, evidence: Sequence[Evidence], brief: bool = False, feedback: Sequence[str] = ()
+    ) -> GroundedResult: ...
+
+
+class Checker(Protocol):
+    def check(self, result: GroundedResult) -> ClaimReport: ...
 
 
 class Renderer(Protocol):
@@ -75,6 +83,8 @@ class PaperVideoService:
         videos: VideoRepository,
         evidence_count: int = 12,
         output_root: Path | None = None,
+        *,
+        checker: Checker,
     ) -> None:
         self.papers = papers
         self.searcher = searcher
@@ -84,6 +94,7 @@ class PaperVideoService:
         self.videos = videos
         self.evidence_count = evidence_count
         self.output_root = Path(output_root) if output_root else None
+        self.checker = checker
 
     def check(self, user_id: str, paper_id: str, topic: str) -> CoverageCheck:
         paper = self._ready_paper(user_id, paper_id)
@@ -140,6 +151,33 @@ class PaperVideoService:
             raise PaperNotReady(paper.status)
         return paper
 
+    def _checked(self, topic: str, evidence: list[Evidence], coverage: Coverage, result: GroundedResult):
+        """Check the script; rewrite once if sentences are unsupported; remove what is still unsupported.
+
+        A checker error propagates, so a script that could not be checked is never rendered.
+        """
+        report_stage("check")
+        with llm_step("claim check"):
+            report = self.checker.check(result)
+        regenerated = False
+        if not report.ok:
+            report_stage("check", "Rewriting the sentences the paper does not support")
+            try:
+                with llm_step("grounded lesson (rewrite)"):
+                    rewritten = self.grounded.create(
+                        topic, evidence, brief=coverage.level == "weak",
+                        feedback=[check.sentence for check in report.failed],
+                    )
+            except UngroundedLesson:
+                rewritten = None               # keep the first script; its unsupported sentences are removed below
+            if rewritten is not None:
+                report_stage("check", "Checking the rewritten script")
+                with llm_step("claim check (second pass)"):
+                    second = self.checker.check(rewritten)
+                result, report, regenerated = rewritten, second, True
+        fixed, removed = apply_report(result, report)
+        return fixed, report, removed, regenerated
+
     def _search(self, user_id: str, paper: PaperRecord, topic: str) -> list[Evidence]:
         return self.searcher.search(user_id, paper.document_id, topic, k=self.evidence_count, mode="vector")
 
@@ -159,7 +197,15 @@ class PaperVideoService:
             result = self.grounded.create(topic, evidence, brief=coverage.level == "weak")
         report_stage("script")
 
-        warnings = [NOT_CHECKED_WARNING]
+        result, report, removed, regenerated = self._checked(topic, evidence, coverage, result)
+
+        warnings = [CHECKED_NOTE]
+        if removed:
+            count = len(removed)
+            warnings.append(
+                f"{count} sentence{'s' if count != 1 else ''} the paper did not support "
+                f"{'were' if count != 1 else 'was'} removed."
+            )
         if coverage.level == "weak":
             warnings.append(BRIEF_WARNING)
         evidence_file = [
@@ -184,8 +230,20 @@ class PaperVideoService:
                 "evidence.json": json.dumps(evidence_file, indent=2, ensure_ascii=False),
                 "citations.json": json.dumps(citations, indent=2, ensure_ascii=False),
                 "qc_warnings.json": json.dumps(warnings, indent=2, ensure_ascii=False),
+                "claim_check.json": json.dumps(
+                    {
+                        "regenerated": regenerated,
+                        "checks": [_check_as_dict(check) for check in report.checks],
+                        "removed": [_check_as_dict(check) for check in removed],
+                    },
+                    indent=2, ensure_ascii=False,
+                ),
             },
         )
+
+
+def _check_as_dict(check) -> dict:
+    return {"part": check.part, "sentence": check.sentence, "verdict": check.verdict, "quote": check.quote}
 
 
 def _pages(evidence: Sequence[Evidence]) -> str:

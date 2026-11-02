@@ -13,10 +13,11 @@ from papers.repository import PaperRecord
 from retrieval.evidence import Evidence
 from schemas.demo import DemoVideoResponse
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, ScriptSection, UserLessonRequest
+from services.claim_checker import ClaimReport, NothingSupported, SentenceCheck
 from services.grounded_lesson_service import GroundedResult, Passage, UngroundedLesson
 from services.job_service import JobService
 from services.paper_video_service import (
-    NOT_CHECKED_WARNING,
+    CHECKED_NOTE,
     PaperNotFound,
     PaperNotReady,
     PaperVideoService,
@@ -68,17 +69,39 @@ class FakeGrounded:
         self.error = error
         self.calls = []
 
-    def create(self, topic, evidence, brief=False):
-        self.calls.append((topic, list(evidence), brief))
+    def create(self, topic, evidence, brief=False, feedback=()):
+        self.calls.append((topic, list(evidence), brief, list(feedback)))
         if self.error:
             raise self.error
         passages = [Passage(f"P{i}", item) for i, item in enumerate(evidence, start=1)]
         return GroundedResult(
             lesson_request=LessonRequest(topic=topic, audience="a", goal="g", duration_minutes=2, teaching_depth="intro"),
             lesson_plan=LessonPlan(title="The encoder", learning_objectives=["x"], sections=["How"]),
-            lesson_script=LessonScript(introduction="i", sections=[ScriptSection(section_title="How", narration="n")], conclusion="c"),
+            lesson_script=LessonScript(introduction="Intro.", sections=[ScriptSection(section_title="How", narration="First claim. Second claim.")], conclusion="Outro."),
             passages=passages, section_citations=[["P1", "P2"]],
         )
+
+
+def passing_report():
+    return ClaimReport([SentenceCheck("How", "First claim.", "supported", "a quote of the paper", True),
+                        SentenceCheck("How", "Second claim.", "supported", "another quote", True)])
+
+
+def failing_report(*sentences):
+    return ClaimReport([SentenceCheck("How", s, "unsupported", "", False) for s in sentences])
+
+
+class FakeChecker:
+    def __init__(self, *reports, error=None):
+        self.reports = list(reports) or [passing_report()]
+        self.error = error
+        self.calls = 0
+
+    def check(self, result):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.reports.pop(0) if len(self.reports) > 1 else self.reports[0]
 
 
 class FakeDemo:
@@ -122,12 +145,13 @@ def world(tmp_path):
     w.jobs = JobService(lambda request: response(tmp_path), tmp_path)
     w.grounded = FakeGrounded()
 
-    def build(similarity=0.9, papers=None, grounded=None):
+    def build(similarity=0.9, papers=None, grounded=None, checker=None):
         w.searcher = FakeSearcher(similarity)
         w.grounded = grounded or FakeGrounded()
+        w.checker = checker or FakeChecker()
         w.service = PaperVideoService(
             papers or FakePapers(record(w.me)), w.searcher, w.grounded, w.demo, w.jobs, w.videos,
-            output_root=tmp_path,
+            output_root=tmp_path, checker=w.checker,
         )
         return w.service
 
@@ -190,7 +214,7 @@ def test_a_covered_topic_renders_with_citations_evidence_and_the_not_checked_war
 
     assert job.status == "completed"
     warnings, artifacts = world.demo.rendered[0]
-    assert NOT_CHECKED_WARNING in warnings and not any("only briefly" in w for w in warnings)
+    assert CHECKED_NOTE in warnings and not any("only briefly" in w for w in warnings)
     assert json.loads(artifacts["citations.json"]) == {"How": ["P1", "P2"]}
     evidence_file = json.loads(artifacts["evidence.json"])
     assert [p["passage_id"] for p in evidence_file] == ["P1", "P2"]
@@ -255,7 +279,7 @@ def test_the_video_warnings_are_saved_with_the_video_and_listed_as_notes(world):
     items = service.list_videos(world.me, "paper-1")
 
     assert len(items) == 1
-    assert NOT_CHECKED_WARNING in items[0].notes and any("only briefly" in n for n in items[0].notes)
+    assert CHECKED_NOTE in items[0].notes and any("only briefly" in n for n in items[0].notes)
     assert items[0].record.kind == "paper"
 
 
@@ -264,3 +288,72 @@ def test_a_general_video_has_no_notes(world):
     finish(world, service.start(world.me, "paper-1", "bananas", "general"))
 
     assert service.list_videos(world.me, "paper-1")[0].notes == []
+
+
+def test_the_check_stage_is_reported_and_the_note_says_each_sentence_was_checked(world):
+    service = world.build()
+
+    job = finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    assert "check" in [s.key for s in job.stages] and world.checker.calls == 1
+    artifacts = world.demo.rendered[0][1]
+    saved = json.loads(artifacts["claim_check.json"])
+    assert saved["regenerated"] is False and saved["removed"] == [] and len(saved["checks"]) == 2
+    assert "not a guarantee" in CHECKED_NOTE
+
+
+def test_failed_sentences_trigger_one_regeneration_with_feedback_and_the_second_result_is_rendered(world):
+    checker = FakeChecker(failing_report("Second claim."), passing_report())
+    service = world.build(checker=checker)
+
+    job = finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    assert job.status == "completed" and checker.calls == 2
+    assert len(world.grounded.calls) == 2 and world.grounded.calls[1][3] == ["Second claim."]
+    assert json.loads(world.demo.rendered[0][1]["claim_check.json"])["regenerated"] is True
+
+
+def test_sentences_still_failing_after_regeneration_are_removed_and_the_note_says_how_many(world):
+    checker = FakeChecker(failing_report("Second claim."), failing_report("Second claim."))
+    service = world.build(checker=checker)
+
+    finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    warnings, artifacts = world.demo.rendered[0]
+    assert any("1 sentence the paper did not support was removed" in w for w in warnings)
+    saved = json.loads(artifacts["claim_check.json"])
+    assert [r["sentence"] for r in saved["removed"]] == ["Second claim."]
+
+
+def test_if_the_rewrite_cannot_be_grounded_the_first_script_is_kept_with_its_unsupported_sentences_removed(world):
+    class RewriteFails(FakeGrounded):
+        def create(self, topic, evidence, brief=False, feedback=()):
+            if feedback:
+                raise UngroundedLesson("could not be tied")
+            return super().create(topic, evidence, brief, feedback)
+
+    checker = FakeChecker(failing_report("Second claim."))
+    service = world.build(checker=checker, grounded=RewriteFails())
+
+    job = finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    assert job.status == "completed"
+    assert any("removed" in w for w in world.demo.rendered[0][0])
+
+
+def test_a_checker_exception_fails_the_job_and_renders_nothing(world):
+    service = world.build(checker=FakeChecker(error=RuntimeError("model down")))
+
+    job = finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    assert job.status == "failed" and "model down" in job.error.message
+    assert world.demo.rendered == [] and world.videos.list_for_paper(world.me, "paper-1") == []
+
+
+def test_nothing_supported_fails_the_job_with_a_plain_message(world):
+    service = world.build(checker=FakeChecker(failing_report("First claim.", "Second claim.")))
+
+    job = finish(world, service.start(world.me, "paper-1", "the encoder", "paper"))
+
+    assert job.status == "failed" and "no video was made" in job.error.message
+    assert world.demo.rendered == []

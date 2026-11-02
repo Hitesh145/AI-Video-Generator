@@ -80,7 +80,7 @@ def test_status_during_the_run_reflects_the_real_stage_and_section(tmp_path):
     states = {s.key: s.state for s in status.stages}
     assert status.status == "running"
     assert states == {
-        "analyze": "done", "knowledge": "done", "plan": "done", "script": "done",
+        "analyze": "done", "knowledge": "done", "plan": "done", "script": "done", "check": "done",
         "route": "done", "animate": "current", "assemble": "pending",
     }
     assert [s for s in status.stages if s.key == "knowledge"][0].detail == "skipped"

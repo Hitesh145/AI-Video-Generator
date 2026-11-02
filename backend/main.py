@@ -43,6 +43,7 @@ from services.llm_recorder import RecordingLLM
 from services.llm_service import LLMService
 from services.media_response import create_media_router
 from services.video_library import list_videos
+from services.claim_checker import ClaimChecker
 from services.demo_video_service import DemoVideoService
 from services.grounded_lesson_service import GroundedLessonService
 from services.paper_video_service import PaperVideoService
@@ -150,6 +151,7 @@ paper_video_service = PaperVideoService(
     jobs=job_service,
     videos=video_repository,
     output_root=output_root,
+    checker=ClaimChecker(llm_service),
 )
 app.include_router(create_paper_videos_router(paper_video_service, current_user))
 app.add_middleware(

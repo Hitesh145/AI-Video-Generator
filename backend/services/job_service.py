@@ -19,6 +19,7 @@ STAGES: list[tuple[str, str]] = [
     ("knowledge", "Gathering resources"),
     ("plan", "Building the lesson plan"),
     ("script", "Creating the script"),
+    ("check", "Checking the script against the paper"),
     ("route", "Choosing animations"),
     ("animate", "Animating sections"),
     ("assemble", "Assembling the video"),
