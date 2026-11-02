@@ -9,13 +9,13 @@
       "key": "attention",
       "title": "Attention Is All You Need",
       "url": "https://arxiv.org/pdf/1706.03762",
-      "sha256": null
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697"
     },
     {
       "key": "resnet",
       "title": "Deep Residual Learning for Image Recognition",
       "url": "https://arxiv.org/pdf/1512.03385",
-      "sha256": null
+      "sha256": "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a"
     }
   ]
 }
