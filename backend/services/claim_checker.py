@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from pydantic import BaseModel
 
 from schemas.claims import PartVerdicts
+from schemas.lesson import LessonPlan, LessonScript, ScriptSection
 from services.grounded_lesson_service import GroundedResult
 
 MIN_QUOTE_CHARS = 10          # letters and digits of a quote, so "the" cannot stand in for evidence
@@ -23,6 +24,14 @@ _ABBREVIATIONS = ("Figs.", "Fig.", "Eqn.", "Eq.", "Sec.", "No.", "e.g.", "i.e.",
 _HIDDEN_DOT = "\u0000"
 _BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
 _DASHES = str.maketrans({"‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "−": "-"})
+
+
+class NothingSupported(ValueError):
+    """No part of the script survived the check, so there is nothing true to make a video from."""
+
+
+NEUTRAL_INTRODUCTION = "This video explains parts of the paper."
+NEUTRAL_CONCLUSION = "That is what the paper says about this."
 
 
 class StructuredGenerator(Protocol):
@@ -142,3 +151,43 @@ class ClaimChecker:
                 "Return one verdict for every sentence number, from 0 upward.",
             ]
         )
+
+
+def apply_report(result: GroundedResult, report: ClaimReport) -> tuple[GroundedResult, list[SentenceCheck]]:
+    """The result without the sentences the report rejected, and the checks that were removed.
+
+    A section left with no sentence is dropped (with its citations and plan entry). An introduction or conclusion
+    left with none becomes a neutral line that states nothing about the paper.
+    """
+    failed = report.failed
+    if not failed:
+        return result, []
+    rejected = {(check.part, check.sentence) for check in failed}
+
+    def keep(part: str, text: str) -> str:
+        return " ".join(s for s in split_sentences(text) if (part, s) not in rejected)
+
+    script = result.lesson_script
+    introduction = keep("introduction", script.introduction) or NEUTRAL_INTRODUCTION
+    conclusion = keep("conclusion", script.conclusion) or NEUTRAL_CONCLUSION
+    sections, citations, titles = [], [], []
+    for section, ids in zip(script.sections, result.section_citations):
+        narration = keep(section.section_title, section.narration)
+        if narration:
+            sections.append(ScriptSection(section_title=section.section_title, narration=narration))
+            citations.append(list(ids))
+            titles.append(section.section_title)
+    if not sections:
+        raise NothingSupported("None of the script could be checked against the paper, so no video was made.")
+
+    fixed = replace(
+        result,
+        lesson_plan=LessonPlan(
+            title=result.lesson_plan.title,
+            learning_objectives=result.lesson_plan.learning_objectives,
+            sections=titles,
+        ),
+        lesson_script=LessonScript(introduction=introduction, sections=sections, conclusion=conclusion),
+        section_citations=citations,
+    )
+    return fixed, failed

@@ -3,7 +3,14 @@ import pytest
 from retrieval.evidence import Evidence
 from schemas.claims import PartVerdicts, SentenceVerdict
 from schemas.lesson import LessonPlan, LessonRequest, LessonScript, ScriptSection
-from services.claim_checker import ClaimChecker, ClaimReport, split_sentences
+from services.claim_checker import (
+    ClaimChecker,
+    ClaimReport,
+    NothingSupported,
+    SentenceCheck,
+    apply_report,
+    split_sentences,
+)
 from services.grounded_lesson_service import GroundedResult, Passage
 
 
@@ -148,3 +155,82 @@ def test_the_report_summarises_counts():
     report = ClaimReport(checks=[])
 
     assert report.ok and report.failed == []
+
+
+def failing(part, sentence):
+    return SentenceCheck(part, sentence, "unsupported", "", False)
+
+
+def passing(part, sentence):
+    return SentenceCheck(part, sentence, "supported", "quote of the paper", True)
+
+
+THREE = result(
+    intro="This video covers the encoder. It has a wrong claim.",
+    sections=(
+        ("Depth", "The encoder has six identical layers. It was invented in 1950. It is a stack.", ["P1"]),
+        ("Training", "Training took twelve hours.", ["P2"]),
+    ),
+    conclusion="That is the encoder.",
+)
+
+
+def test_a_report_with_no_failures_returns_the_result_unchanged():
+    report = ClaimReport([passing("Depth", "The encoder has six identical layers.")])
+
+    fixed, removed = apply_report(THREE, report)
+
+    assert fixed is THREE and removed == []
+
+
+def test_apply_report_removes_only_failed_sentences_and_keeps_order():
+    report = ClaimReport([
+        failing("introduction", "It has a wrong claim."),
+        failing("Depth", "It was invented in 1950."),
+    ])
+
+    fixed, removed = apply_report(THREE, report)
+
+    script = fixed.lesson_script
+    assert script.introduction == "This video covers the encoder."
+    assert script.sections[0].narration == "The encoder has six identical layers. It is a stack."
+    assert script.sections[1].narration == "Training took twelve hours."
+    assert [r.sentence for r in removed] == ["It has a wrong claim.", "It was invented in 1950."]
+    assert fixed.section_citations == [["P1"], ["P2"]]
+
+
+def test_a_section_with_no_supported_sentence_is_dropped_with_its_citation_and_plan_entry():
+    report = ClaimReport([failing("Training", "Training took twelve hours.")])
+
+    fixed, _ = apply_report(THREE, report)
+
+    assert [s.section_title for s in fixed.lesson_script.sections] == ["Depth"]
+    assert fixed.lesson_plan.sections == ["Depth"]
+    assert fixed.section_citations == [["P1"]]
+
+
+def test_empty_intro_and_conclusion_get_neutral_framing_not_claims():
+    report = ClaimReport([
+        failing("introduction", "This video covers the encoder."),
+        failing("introduction", "It has a wrong claim."),
+        failing("conclusion", "That is the encoder."),
+    ])
+
+    fixed, _ = apply_report(THREE, report)
+
+    assert fixed.lesson_script.introduction == "This video explains parts of the paper."
+    assert fixed.lesson_script.conclusion == "That is what the paper says about this."
+
+
+def test_nothing_left_raises():
+    report = ClaimReport([
+        failing("Depth", "The encoder has six identical layers."),
+        failing("Depth", "It was invented in 1950."),
+        failing("Depth", "It is a stack."),
+        failing("Training", "Training took twelve hours."),
+    ])
+
+    with pytest.raises(NothingSupported) as raised:
+        apply_report(THREE, report)
+
+    assert "no video was made" in str(raised.value)

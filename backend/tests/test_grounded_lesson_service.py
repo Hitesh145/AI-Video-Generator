@@ -263,3 +263,21 @@ def test_latex_dollars_and_unicode_minus_do_not_make_a_faithful_equation_a_probl
     shown = {"P1": "We let H(x) = F(x) - x be the residual."}
 
     assert find_problems(narrated("We let $H(x) = F(x) − x$ here."), shown) == []
+
+
+def test_feedback_sentences_appear_in_the_regeneration_prompt():
+    llm = FakeLLM(lesson(section()))
+
+    GroundedLessonService(llm).create("the encoder", EVIDENCE, feedback=["It was invented in 1950."])
+
+    prompt = llm.prompts[0]
+    assert "A previous version contained sentences the paper does not support. Do not repeat them:" in prompt
+    assert "- It was invented in 1950." in prompt
+
+
+def test_no_feedback_adds_no_feedback_block():
+    llm = FakeLLM(lesson(section()))
+
+    GroundedLessonService(llm).create("the encoder", EVIDENCE)
+
+    assert "A previous version" not in llm.prompts[0]

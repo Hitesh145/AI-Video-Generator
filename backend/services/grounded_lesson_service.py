@@ -125,7 +125,9 @@ class GroundedLessonService:
         self.llm_service = llm_service
         self.max_attempts = max_attempts
 
-    def create(self, topic: str, evidence: Sequence[Evidence], brief: bool = False) -> GroundedResult:
+    def create(
+        self, topic: str, evidence: Sequence[Evidence], brief: bool = False, feedback: Sequence[str] = ()
+    ) -> GroundedResult:
         passages = [
             Passage(f"P{number}", item)
             for number, item in enumerate((item for item in evidence if item.text.strip()), start=1)
@@ -137,7 +139,7 @@ class GroundedLessonService:
 
         problems: list[str] = []
         for _ in range(self.max_attempts):
-            prompt = self._prompt(topic, passages, brief, problems)
+            prompt = self._prompt(topic, passages, brief, problems, feedback)
             result = self.llm_service.generate_structured(prompt, GroundedLesson)
             if not isinstance(result, GroundedLesson):
                 raise TypeError("The grounded lesson writer did not return a GroundedLesson.")
@@ -184,7 +186,9 @@ class GroundedLessonService:
         return GroundedResult(request, plan, script, passages, [list(s.evidence_ids) for s in lesson.sections])
 
     @staticmethod
-    def _prompt(topic: str, passages: list[Passage], brief: bool, problems: list[str]) -> str:
+    def _prompt(
+        topic: str, passages: list[Passage], brief: bool, problems: list[str], feedback: Sequence[str] = ()
+    ) -> str:
         rendered = "\n\n".join(_render(passage) for passage in passages)
         lines = [
             "Write a short educational video script that explains what ONE research paper says.",
@@ -215,6 +219,9 @@ class GroundedLessonService:
             topic,
             "TOPIC>>>",
         ]
+        if feedback:
+            lines += ["", "A previous version contained sentences the paper does not support. Do not repeat them:"]
+            lines += [f"- {sentence}" for sentence in feedback]
         if problems:
             lines += ["", "Your previous answer was rejected. Fix these problems:"] + [f"- {p}" for p in problems]
         return "\n".join(lines)
