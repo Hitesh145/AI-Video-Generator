@@ -12,3 +12,7 @@ backend/test_animation/
 backend/test_output/
 backend/media/
 **/tempCodeRunnerFile.py
+
+# planning notes
+docs/superpowers/
+.superpowers/

@@ -1,6 +1,6 @@
 """Does a paper cover a topic? Judged from how well its best passage matches the request.
 
-The cut-offs come from the retrieval evaluation (docs/superpowers/results/2026-11-03-retrieval-evaluation.md):
+The cut-offs come from the retrieval evaluation (backend/evaluation):
 passages answering a question scored 0.62-0.85 (median about 0.75) while questions the paper cannot answer still
 reached 0.59-0.73, so no value separates them cleanly. These lean toward "not fully covered", as the design asks;
 the middle band lets the person choose.
