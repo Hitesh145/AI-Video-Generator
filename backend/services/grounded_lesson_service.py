@@ -231,7 +231,7 @@ class GroundedLessonService:
     ) -> str:
         rendered = "\n\n".join(_render(passage) for passage in passages)
         lines = [
-            "Write a short educational video script that explains what ONE research paper says.",
+            "Write an educational video script that explains what ONE research paper says, thoroughly enough that a learner who has not read it can follow.",
             "",
             "Rules:",
             "1. Use only the passages below.",
@@ -246,9 +246,15 @@ class GroundedLessonService:
             "9. If the passages do not actually address what the learner asked for, set covers_topic to false and say in "
             "gap_note what is missing; do not write a lesson about other content in that case.",
             "10. If a term in your narration is not defined by the passages, you may define it in the section's background field in at most two plain sentences from general knowledge; never put numbers, formulas or claims about this paper there.",
+            "11. Length: aim for about 6 sections and 600 to 900 words of narration in total, one idea per section, and "
+            "define every technical term from the passages before you use it. If the passages do not support that much, "
+            "write fewer sections instead of padding.",
+            "12. To make an idea easier to grasp, you may add a simple everyday example or analogy in the section's "
+            "background field (the same field and two-sentence limit as rule 10); never put numbers, formulas or claims "
+            "about this paper there.",
         ]
         if brief:
-            lines.append("11. The paper may only touch this topic briefly; if so, say so in the introduction and keep the video short.")
+            lines.append("13. The paper may only touch this topic briefly; if so, say so in the introduction and keep the video short. This overrides the length target in rule 11.")
         lines += [
             "",
             "Passages from the paper:",

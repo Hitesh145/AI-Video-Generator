@@ -10,8 +10,9 @@ class GroundedSection(BaseModel):
     background: str = Field(
         default="",
         description=(
-            "At most two plain sentences defining, from general knowledge, terms this section uses that its "
-            "passages do not define. No numbers, no formulas, no claims about the paper."
+            "At most two plain sentences from general knowledge: a definition of a term this section uses that its "
+            "passages do not define, or a simple everyday example or analogy. No numbers, no formulas, no claims "
+            "about the paper."
         ),
     )
 

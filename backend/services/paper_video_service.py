@@ -82,7 +82,7 @@ class PaperVideoService:
         demo: Renderer,
         jobs: JobService,
         videos: VideoRepository,
-        evidence_count: int = 12,
+        evidence_count: int = 20,
         output_root: Path | None = None,
         *,
         checker: Checker,

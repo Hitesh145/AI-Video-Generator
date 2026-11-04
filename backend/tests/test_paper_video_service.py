@@ -201,7 +201,7 @@ def test_paper_mode_searches_only_the_callers_document_with_vector_search(world)
 
     service.start(world.me, "paper-1", "the encoder", "paper")
 
-    assert world.searcher.calls == [(world.me, "doc-1", "the encoder", 12, "vector")]
+    assert world.searcher.calls == [(world.me, "doc-1", "the encoder", 20, "vector")]
 
 
 def test_an_absent_topic_in_paper_mode_raises_and_starts_no_job(world):

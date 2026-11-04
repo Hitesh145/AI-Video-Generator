@@ -316,6 +316,36 @@ def test_the_grounded_prompt_allows_marked_background():
             "this paper there.") in " ".join(llm.prompts[0].split())
 
 
+def test_the_prompt_asks_for_a_full_length_script_not_a_short_one():
+    llm = FakeLLM(lesson(section()))
+
+    GroundedLessonService(llm).create("the encoder", EVIDENCE)
+
+    prompt = " ".join(llm.prompts[0].split())
+    assert "Write a short" not in prompt
+    assert "about 6 sections" in prompt and "600 to 900 words" in prompt
+    assert "define every technical term from the passages before you use it" in prompt
+    assert "write fewer sections instead of padding" in prompt
+
+
+def test_the_prompt_asks_for_a_simple_everyday_example_in_the_marked_background_field():
+    llm = FakeLLM(lesson(section()))
+
+    GroundedLessonService(llm).create("the encoder", EVIDENCE)
+
+    prompt = " ".join(llm.prompts[0].split())
+    assert "simple everyday example or analogy" in prompt and "background field" in prompt
+    assert "never put numbers" in prompt
+
+
+def test_brief_mode_overrides_the_length_target():
+    llm = FakeLLM(lesson(section()))
+
+    GroundedLessonService(llm).create("the encoder", EVIDENCE, brief=True)
+
+    assert "overrides the length target" in " ".join(llm.prompts[0].split())
+
+
 def test_background_that_hides_paper_claims_or_big_number_words_is_a_problem():
     for bad in (
         "The authors show attention beats recurrence.",
